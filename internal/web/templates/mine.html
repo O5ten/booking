@@ -1,0 +1,35 @@
+{{define "content"}}
+<div class="narrow">
+	<h1>Mina bokningar</h1>
+	{{if .Data.Cancelled}}<p class="alert alert-ok">Bokningen är avbokad.</p>{{end}}
+
+	{{if not .Data.Email}}
+	<p class="muted">Vi känner igen dig på din e-postadress. Skriv in den så visar vi dina bokningar.</p>
+	{{end}}
+	<form method="get" action="/mina" class="range-form">
+		<div class="field">
+			<label for="epost">E-postadress</label>
+			<input id="epost" name="epost" type="email" value="{{.Data.Email}}" placeholder="anna@example.se" required>
+		</div>
+		<button type="submit" class="button">Visa</button>
+	</form>
+
+	{{if .Data.Rows}}
+	<ul class="booking-list big">
+		{{range .Data.Rows}}
+		<li>
+			<a href="/bokning/{{.Booking.ID}}">
+				<span class="chip">{{with .Resource.Emoji}}{{.}} {{end}}{{.Resource.Name}}</span>
+				<strong>{{titleCase (interval .Start .End)}}</strong>
+				<small>{{if .Nights}}{{nights .Nights}}{{else}}{{.Duration}}{{end}}
+					{{if .Ongoing}}· <span class="badge badge-live">pågår nu</span>{{else if not .Upcoming}}· avslutad{{end}}</small>
+			</a>
+		</li>
+		{{end}}
+	</ul>
+	{{else if .Data.Email}}
+	<p class="empty">Inga bokningar på {{.Data.Email}} just nu. <a href="/">Boka något</a>?</p>
+	{{end}}
+</div>
+{{end}}
+{{template "base" .}}

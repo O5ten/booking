@@ -1,0 +1,65 @@
+{{define "content"}}
+<div class="hero">
+	<h1>Boka husets gemensamma resurser</h1>
+	<p class="lede">Cyklar, lokaler och gästrum – välj det du vill boka så ser du direkt vad som är ledigt.</p>
+</div>
+
+{{if .Data.Mine}}
+<section class="panel">
+	<div class="panel-head">
+		<h2>Dina kommande bokningar</h2>
+		<a class="quiet-link" href="/mina">Visa alla</a>
+	</div>
+	<ul class="booking-list">
+		{{range .Data.Mine}}
+		<li>
+			<a href="/bokning/{{.Booking.ID}}">
+				<span class="chip">{{with .Resource.Emoji}}{{.}} {{end}}{{.Resource.Name}}</span>
+				<strong>{{titleCase (interval .Start .End)}}</strong>
+				{{if .Ongoing}}<span class="badge badge-live">pågår nu</span>{{end}}
+			</a>
+		</li>
+		{{end}}
+	</ul>
+</section>
+{{end}}
+
+{{range .Data.Groups}}
+<section class="group">
+	<h2 class="group-title">{{with .Category.Emoji}}<span aria-hidden="true">{{.}}</span> {{end}}{{.Category.Name}}</h2>
+	{{with .Category.Description}}<p class="muted group-desc">{{.}}</p>{{end}}
+	<div class="cards">
+		{{range .Resources}}
+		<article class="card">
+			<a class="card-link" href="/resurs/{{.Resource.ID}}">
+				<header class="card-head">
+					{{with .Resource.Emoji}}<span class="card-emoji" aria-hidden="true">{{.}}</span>{{end}}
+					<h3>{{.Resource.Name}}</h3>
+				</header>
+				{{with .Resource.Description}}<p class="card-desc">{{.}}</p>{{end}}
+				<dl class="card-facts">
+					{{if eq .Rules.Mode "hours"}}
+					<div><dt>Längd</dt><dd>{{.Rules.Durations}}</dd></div>
+					<div><dt>Tider</dt><dd>{{.Rules.Window}}</dd></div>
+					{{else}}
+					<div><dt>Längd</dt><dd>{{.Rules.Nights}}</dd></div>
+					<div><dt>Tider</dt><dd>{{.Rules.CheckTime}}</dd></div>
+					{{end}}
+					{{with .Resource.Location}}<div><dt>Var</dt><dd>{{.}}</dd></div>{{end}}
+				</dl>
+				<footer class="card-foot">
+					{{if .NextFree}}
+						<span class="badge badge-free">Ledigt {{relativeDay (local .NextFree) $.Now}}{{if eq .Rules.Mode "hours"}} {{clock (local .NextFree)}}{{end}}</span>
+					{{else}}
+						<span class="badge badge-busy">Inget ledigt just nu</span>
+					{{end}}
+					<span class="card-cta">Boka →</span>
+				</footer>
+			</a>
+		</article>
+		{{end}}
+	</div>
+</section>
+{{end}}
+{{end}}
+{{template "base" .}}

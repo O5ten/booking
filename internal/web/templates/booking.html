@@ -1,0 +1,63 @@
+{{define "content"}}
+{{$row := .Data.Row}}{{$b := $row.Booking}}
+<div class="narrow">
+	{{if .Data.New}}
+	<div class="confirm-mark" aria-hidden="true">
+		<svg viewBox="0 0 48 48" width="52" height="52" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+			<circle cx="24" cy="24" r="21"/><path d="m14 24.5 7 7 13-15"/>
+		</svg>
+	</div>
+	<h1>Klart – det är bokat!</h1>
+	<p class="lede">{{if $.MailOn}}En bekräftelse med kalenderfil är på väg till {{$b.Email}}.{{else}}Spara sidan – e-postutskick är inte påslaget på den här servern.{{end}}</p>
+	{{else}}
+	<h1>Bokning</h1>
+	{{end}}
+
+	{{if eq $b.Status "cancelled"}}
+	<p class="alert alert-warn">Den här bokningen är avbokad{{if $b.CancelledAt.Valid}} {{dateLong (local $b.CancelledAt.Time)}}{{end}}.</p>
+	{{end}}
+
+	<div class="receipt">
+		<div class="receipt-row">
+			<span>Vad</span>
+			<strong>{{with $row.Resource.Emoji}}{{.}} {{end}}{{$row.Resource.Name}}</strong>
+		</div>
+		<div class="receipt-row">
+			<span>När</span>
+			<strong>{{titleCase (interval $row.Start $row.End)}}</strong>
+		</div>
+		<div class="receipt-row">
+			<span>Längd</span>
+			<strong>{{if $row.Nights}}{{nights $row.Nights}}{{else}}{{$row.Duration}}{{end}}</strong>
+		</div>
+		{{with $row.Resource.Location}}<div class="receipt-row"><span>Var</span><strong>{{.}}</strong></div>{{end}}
+		<div class="receipt-row">
+			<span>Bokad av</span>
+			<strong>{{$b.Name}}{{if $b.Apartment}} · lgh {{$b.Apartment}}{{end}}</strong>
+		</div>
+		{{with $b.Note}}<div class="receipt-row"><span>Meddelande</span><strong>{{.}}</strong></div>{{end}}
+	</div>
+
+	{{with $row.Resource.Instructions}}<p class="note">{{.}}</p>{{end}}
+
+	{{if eq $b.Status "confirmed"}}
+	<h2 class="section-title">Lägg in i kalendern</h2>
+	<div class="calbuttons">
+		<a class="button" href="{{.Data.ICS}}">Apple Calendar / Outlook <small>.ics-fil</small></a>
+		<a class="button" href="{{.Data.Google}}" target="_blank" rel="noopener">Google Calendar</a>
+		<a class="button ghost" href="{{.Data.Outlook}}" target="_blank" rel="noopener">Outlook på webben</a>
+	</div>
+
+	<h2 class="section-title">Behöver du ändra?</h2>
+	<p class="muted">Avboka och boka en ny tid – då blir tiden ledig för någon annan i huset direkt.</p>
+	<form method="post" action="/bokning/{{$b.ID}}/avboka" class="inline"
+	      data-confirm="Vill du avboka {{$row.Resource.Name}} {{interval $row.Start $row.End}}?">
+		<input type="hidden" name="token" value="{{.Data.CancelToken}}">
+		<button type="submit" class="button danger">Avboka</button>
+	</form>
+	{{end}}
+
+	<p class="back"><a class="quiet-link" href="/resurs/{{$row.Resource.ID}}">← Tillbaka till {{$row.Resource.Name}}</a></p>
+</div>
+{{end}}
+{{template "base" .}}

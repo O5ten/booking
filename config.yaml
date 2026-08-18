@@ -1,0 +1,165 @@
+# Kollektivhuset Rudbeckia – vad som går att boka och enligt vilka regler.
+#
+# Ändra i den här filen för att lägga till, ta bort eller justera resurser.
+# Servern läser filen vid start, så starta om containern efter en ändring.
+
+site:
+  title: Rudbeckia bokning
+  tagline: Kollektivhuset Rudbeckia
+  house_name: Kollektivhuset Rudbeckia
+  timezone: Europe/Stockholm
+  home_url: https://rudbeckia.nu
+  support_url: https://rudbeckia.nu/kontakt/
+  footer_note: Kollektivhuset Rudbeckia · Rosendal, Uppsala
+
+categories:
+  - id: cyklar
+    name: Cyklar
+    emoji: 🚲
+    description: Husets gemensamma cyklar. Ladda gärna batteriet efter din tur.
+  - id: gastrum
+    name: Gästrum
+    emoji: 🛏️
+    description: Tre gästrum för dina besökare. Du städar efter dig.
+  - id: lokaler
+    name: Lokaler
+    emoji: 🏠
+    description: Gemensamma utrymmen som går att boka för fest, möte eller projekt.
+
+resources:
+  # ---------------------------------------------------------------- Cyklar --
+  - id: ellastcykel
+    category: cyklar
+    name: Ellastcykeln
+    emoji: 🚲
+    description: Elektrisk lastcykel med plats för barn eller storhandling.
+    location: Cykelrummet i källaren
+    instructions: >-
+      Nyckeln sitter i nyckelskåpet vid torget. Sätt tillbaka cykeln på laddning
+      när du är klar, och meddela i Mattermost om något gått sönder.
+    info_url: https://rudbeckia.nu/huset/cykelrummet/
+    booking:
+      mode: hours
+      durations: [1, 2, 4, 8]
+      slot_step_minutes: 30
+      buffer_minutes: 15
+      open_from: "06:00"
+      open_to: "22:00"
+      max_advance_days: 30
+      min_notice_minutes: 0
+      max_active_per_user: 2
+      max_hours_per_week_per_user: 16
+
+  - id: elcykel
+    category: cyklar
+    name: Elcykeln
+    emoji: ⚡
+    description: Vanlig elcykel för snabba ärenden och pendling.
+    location: Cykelrummet i källaren
+    instructions: >-
+      Nyckeln sitter i nyckelskåpet vid torget. Ställ tillbaka cykeln på
+      laddning när du är klar.
+    info_url: https://rudbeckia.nu/huset/cykelrummet/
+    booking:
+      mode: hours
+      durations: [1, 2, 4, 8]
+      slot_step_minutes: 30
+      buffer_minutes: 15
+      open_from: "06:00"
+      open_to: "22:00"
+      max_advance_days: 30
+      max_active_per_user: 2
+      max_hours_per_week_per_user: 16
+
+  # --------------------------------------------------------------- Gästrum --
+  - id: gastrum-1
+    category: gastrum
+    name: Gästrum 1
+    emoji: 🛏️
+    description: Större rummet på markplan intill lekrummet. Dubbelsäng 2x90 plus loft med 140-säng.
+    location: Markplan, intill lekrummet
+    instructions: >-
+      Din gäst (eller du som bokar) städar rummet och badrummet. Städvagnen står
+      i badrummet. Extranycklar finns i 1403 i nödfall.
+    info_url: https://rudbeckia.nu/huset/gastrummen/
+    booking:
+      mode: days
+      min_days: 1
+      max_days: 7
+      check_in: "15:00"
+      check_out: "12:00"
+      max_advance_days: 180
+      max_active_per_user: 2
+
+  - id: gastrum-2
+    category: gastrum
+    name: Gästrum 2
+    emoji: 🛏️
+    description: Rummet på markplan med våningssäng, 140-säng nedtill och 90-säng ovanpå.
+    location: Markplan, intill lekrummet
+    instructions: >-
+      Din gäst (eller du som bokar) städar rummet och badrummet. Städvagnen står
+      i badrummet.
+    info_url: https://rudbeckia.nu/huset/gastrummen/
+    booking:
+      mode: days
+      min_days: 1
+      max_days: 7
+      check_in: "15:00"
+      check_out: "12:00"
+      max_advance_days: 180
+      max_active_per_user: 2
+
+  - id: overnattningsrum
+    category: gastrum
+    name: Övernattningsrummet
+    emoji: 🌙
+    description: Litet övernattningsrum på plan 6 intill hissen.
+    location: Plan 6, intill hissen
+    booking:
+      mode: days
+      min_days: 1
+      max_days: 4
+      check_in: "15:00"
+      check_out: "12:00"
+      max_advance_days: 120
+      max_active_per_user: 1
+
+  # --------------------------------------------------------------- Lokaler --
+  # Slå på de här när huset bestämt att de ska bokas digitalt.
+  - id: matsalen
+    category: lokaler
+    name: Matsalen
+    emoji: 🍽️
+    enabled: false
+    description: Husets stora matsal. Bokas för fest, möte eller större middag.
+    location: Markplan
+    instructions: Kolla först att matlaget inte behöver salen samma kväll.
+    info_url: https://rudbeckia.nu/huset/matsalen/
+    booking:
+      mode: hours
+      durations: [2, 4, 8]
+      slot_step_minutes: 60
+      buffer_minutes: 60
+      open_from: "08:00"
+      open_to: "23:00"
+      max_advance_days: 120
+      max_active_per_user: 3
+
+  - id: snickarverkstaden
+    category: lokaler
+    name: Snickarverkstaden
+    emoji: 🔨
+    enabled: false
+    description: Verkstaden i källaren. Boka när du behöver ha den för dig själv.
+    location: Källaren
+    info_url: https://rudbeckia.nu/huset/snickarverkstaden/
+    booking:
+      mode: hours
+      durations: [1, 2, 4]
+      slot_step_minutes: 60
+      buffer_minutes: 0
+      open_from: "08:00"
+      open_to: "21:00"
+      max_advance_days: 60
+      max_active_per_user: 2

@@ -1,0 +1,97 @@
+{{define "content"}}
+{{$res := .Data.Resource}}{{$d := .Data.Days}}{{$rules := .Data.Rules}}
+<nav class="crumbs"><a href="/">Boka</a> <span aria-hidden="true">/</span> <span>{{$res.Name}}</span></nav>
+
+<header class="resource-head">
+	<h1>{{with $res.Emoji}}<span aria-hidden="true">{{.}}</span> {{end}}{{$res.Name}}</h1>
+	{{with $res.Description}}<p class="lede">{{.}}</p>{{end}}
+	<ul class="facts">
+		<li><span>Längd</span><strong>{{$rules.Nights}}</strong></li>
+		<li><span>Tider</span><strong>Check {{$rules.CheckTime}}</strong></li>
+		<li><span>Max i förväg</span><strong>{{$rules.Advance}}</strong></li>
+		{{with $rules.Limit}}<li><span>Max per person</span><strong>{{.}}</strong></li>{{end}}
+		{{with $res.Location}}<li><span>Var</span><strong>{{.}}</strong></li>{{end}}
+	</ul>
+	{{with $res.Instructions}}<p class="note">{{.}}</p>{{end}}
+</header>
+
+{{with .Data.Errors}}
+<div class="alert alert-error" role="alert">
+	<strong>Bokningen gick inte igenom</strong>
+	<ul>{{range .}}<li>{{.Message}}</li>{{end}}</ul>
+</div>
+{{end}}
+
+<section class="panel booking-layout" id="boka">
+	<div class="calendar-column">
+		<div class="month-head">
+			{{if $d.HasPrev}}
+			<a class="button ghost small" href="/resurs/{{$res.ID}}?manad={{$d.Prev.Format "2006-01"}}&amp;fran={{$d.From}}&amp;till={{$d.To}}">← Föregående</a>
+			{{else}}<span></span>{{end}}
+			<h2>{{titleCase (monthYear $d.Month)}}</h2>
+			<a class="button ghost small" href="/resurs/{{$res.ID}}?manad={{$d.Next.Format "2006-01"}}&amp;fran={{$d.From}}&amp;till={{$d.To}}">Nästa →</a>
+		</div>
+
+		<div class="calendar">
+			<div class="cal-weekdays" aria-hidden="true">
+				<span>mån</span><span>tis</span><span>ons</span><span>tor</span><span>fre</span><span>lör</span><span>sön</span>
+			</div>
+			<div class="cal-grid">
+				{{range $d.Cells}}
+					{{if not .InMonth}}
+						<span class="cal-day is-outside" aria-hidden="true">{{.Label}}</span>
+					{{else if .Available}}
+						<a class="cal-day is-free"
+						   href="/resurs/{{$res.ID}}?manad={{$d.Month.Format "2006-01"}}&amp;fran={{isoDate .Date}}&amp;till={{isoDate (.Date.AddDate 0 0 1)}}#boka"
+						   title="Ledigt {{dateLong .Date}}">{{.Label}}</a>
+					{{else if .Taken}}
+						<span class="cal-day is-taken{{if .Mine}} is-mine{{end}}"
+						      title="Bokat av {{.Booking.Name}}">{{.Label}}</span>
+					{{else}}
+						<span class="cal-day is-past" title="{{if .Past}}Har passerat{{else}}För långt fram i tiden{{end}}">{{.Label}}</span>
+					{{end}}
+				{{end}}
+			</div>
+			<p class="cal-legend">
+				<span class="key key-free"></span> ledigt
+				<span class="key key-taken"></span> bokat
+				<span class="key key-mine"></span> din bokning
+			</p>
+		</div>
+	</div>
+
+	<div class="form-column">
+		<h2>Välj datum</h2>
+		<p class="muted small">Klicka på en ledig dag i kalendern, eller fyll i datumen här.</p>
+		<form method="get" action="/resurs/{{$res.ID}}" class="range-form stacked">
+			<input type="hidden" name="manad" value="{{$d.Month.Format "2006-01"}}">
+			<div class="field">
+				<label for="fran">Incheckning <small>{{$res.Rules.CheckIn}}</small></label>
+				<input id="fran" name="fran" type="date" value="{{$d.From}}" required>
+			</div>
+			<div class="field">
+				<label for="till">Utcheckning <small>{{$res.Rules.CheckOut}}</small></label>
+				<input id="till" name="till" type="date" value="{{$d.To}}" required>
+			</div>
+			<button type="submit" class="button">Kontrollera</button>
+		</form>
+
+		{{with $d.RangeError}}<p class="alert alert-warn">{{.}}</p>{{end}}
+
+		{{if $d.RangeOK}}
+		<p class="summary">
+			<strong>{{$res.Name}}</strong><br>
+			{{titleCase (dateLong (local $d.Start))}} {{clock (local $d.Start)}}
+			– {{dateLong (local $d.End)}} {{clock (local $d.End)}}
+			({{nights $d.Nights}})
+		</p>
+		<form method="post" action="/resurs/{{$res.ID}}/boka" class="booking-form">
+			<input type="hidden" name="fran" value="{{$d.From}}">
+			<input type="hidden" name="till" value="{{$d.To}}">
+			{{template "bookingfields" .}}
+		</form>
+		{{end}}
+	</div>
+</section>
+{{end}}
+{{template "base" .}}

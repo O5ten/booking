@@ -1,0 +1,45 @@
+services:
+  booking:
+    image: ghcr.io/mikaelo/booking.rudbeckia.nu:latest
+    container_name: booking-rudbeckia
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # --- Required ---------------------------------------------------------
+      BOOKING_PASSWORD: ${BOOKING_PASSWORD:?set BOOKING_PASSWORD in .env}
+      BASE_URL: ${BASE_URL:-https://booking.rudbeckia.nu}
+
+      # --- Optional ---------------------------------------------------------
+      # Unlocks /admin, where every booking in the house is listed.
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # Keeps sessions alive across a password change if you set it yourself.
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      SESSION_DAYS: ${SESSION_DAYS:-30}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+      # --- Outgoing mail ----------------------------------------------------
+      # Without these the site still works; confirmations are only logged.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Rudbeckia bokning}
+      SMTP_ENCRYPTION: ${SMTP_ENCRYPTION:-starttls}
+      SMTP_REPLY_TO: ${SMTP_REPLY_TO:-}
+    volumes:
+      - booking-data:/data
+      # Mount your own resource list over the one baked into the image.
+      - ./config.yaml:/config.yaml:ro
+    healthcheck:
+      # The image has no shell, so call the binary's own health endpoint via
+      # the container's IP from the outside instead of curl inside.
+      test: ["CMD", "/booking", "-version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  booking-data:

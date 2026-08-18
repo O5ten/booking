@@ -1,0 +1,39 @@
+{{define "bookingfields"}}
+{{$f := .Data.Form}}
+<div class="field-grid">
+	<div class="field">
+		<label for="name">Namn</label>
+		<input id="name" name="name" type="text" required autocomplete="name"
+		       value="{{$f.Name}}" placeholder="Anna Andersson">
+	</div>
+	<div class="field">
+		<label for="apartment">Lägenhet <small>frivilligt</small></label>
+		<input id="apartment" name="apartment" type="text" autocomplete="off"
+		       value="{{$f.Apartment}}" placeholder="1403">
+	</div>
+	<div class="field">
+		<label for="email">E-post</label>
+		<input id="email" name="email" type="email" required autocomplete="email"
+		       value="{{$f.Email}}" placeholder="anna@example.se">
+		<small class="hint">Bekräftelsen med kalenderfil skickas hit.</small>
+	</div>
+	<div class="field">
+		<label for="phone">Telefon <small>frivilligt</small></label>
+		<input id="phone" name="phone" type="tel" autocomplete="tel"
+		       value="{{$f.Phone}}" placeholder="070-123 45 67">
+	</div>
+	<div class="field field-wide">
+		<label for="note">Meddelande <small>frivilligt</small></label>
+		<input id="note" name="note" type="text" maxlength="200"
+		       value="{{$f.Note}}" placeholder="Syns för andra i huset, t.ex. vad du ska göra">
+	</div>
+</div>
+<label class="checkbox">
+	<input type="checkbox" name="remember" value="1" {{if $f.Remember}}checked{{end}}>
+	<span>Kom ihåg mina uppgifter på den här enheten</span>
+</label>
+<div class="form-actions">
+	<button type="submit" class="button primary">Boka</button>
+	<a class="button ghost" href="/resurs/{{.Data.Resource.ID}}">Avbryt</a>
+</div>
+{{end}}
