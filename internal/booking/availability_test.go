@@ -272,3 +272,56 @@ func TestDurationList(t *testing.T) {
 		t.Errorf("DurationList = %q, want %q", got, want)
 	}
 }
+
+// Opening hours follow the wall clock. Sweden changes the clocks at 02:00/03:00,
+// so building the window by adding six hours to midnight lands on 07:00 in
+// spring and 05:00 in autumn — the resource would look like it opened at the
+// wrong time on exactly those two days.
+func TestOpeningHoursSurviveDSTChanges(t *testing.T) {
+	loc := stockholm(t)
+	res := bike() // 06:00–22:00
+
+	days := map[string]string{
+		"2026-03-28": "the day before the clocks go forward",
+		"2026-03-29": "the clocks go forward at 03:00",
+		"2026-10-25": "the clocks go back at 02:00",
+		"2026-10-26": "the day after the clocks go back",
+	}
+	for day, note := range days {
+		from, to := dayWindow(res, at(loc, day+" 00:00"), loc)
+		if got := clockOf(from.In(loc)); got != "06:00" {
+			t.Errorf("%s (%s): opens %s, want 06:00", day, note, got)
+		}
+		if got := clockOf(to.In(loc)); got != "22:00" {
+			t.Errorf("%s (%s): closes %s, want 22:00", day, note, got)
+		}
+		// The change happens before the window opens, so the bookable part of
+		// the day is a full sixteen hours even on a 23 or 25 hour day.
+		if got := to.Sub(from); got != 16*time.Hour {
+			t.Errorf("%s (%s): real span %v, want 16h", day, note, got)
+		}
+	}
+}
+
+// A booking as long as the whole window therefore fits on every day, including
+// the ones where the clocks change.
+func TestFullDayLengthFitsOnDSTDays(t *testing.T) {
+	loc := stockholm(t)
+	res := bike()
+
+	for _, day := range []string{"2026-03-28", "2026-03-29", "2026-10-25"} {
+		// Stand a few days before each one, so nothing falls outside the
+		// resource's booking horizon.
+		now := at(loc, day+" 00:00").AddDate(0, 0, -5)
+		view := BuildDay(res, at(loc, day+" 00:00"), 16*time.Hour, nil, now, loc, "")
+		if view.FreeCount != 1 {
+			t.Errorf("%s: %d starts for a 16 h booking, want exactly 1", day, view.FreeCount)
+			continue
+		}
+		slot := view.Slots[0]
+		if clockOf(slot.Start.In(loc)) != "06:00" || clockOf(slot.End.In(loc)) != "22:00" {
+			t.Errorf("%s: the full-day slot runs %s–%s, want 06:00–22:00",
+				day, clockOf(slot.Start.In(loc)), clockOf(slot.End.In(loc)))
+		}
+	}
+}

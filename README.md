@@ -110,11 +110,13 @@ längd och starttid ur ett rutnät.
     max_hours_per_week_per_user: 16
 ```
 
-Med `custom_duration: true` står knapparna kvar som snabbval, men bredvid dem
-dyker ett fält upp där man kan skriva sin egen längd — `3` eller `1,5`. Den
-måste hålla sig mellan `min_duration_minutes` och `max_duration_minutes` och gå
-jämnt ut i `slot_step_minutes`. Snabbvalen fungerar alltid, även om de ligger
-utanför de gränserna.
+Med `custom_duration: true` står knapparna kvar som snabbval, och bredvid dem
+dyker en knapp upp som heter **Egen längd**. Klickar man på den — precis som på
+vilket snabbval som helst — fälls ett fält ut där man skriver sin egen längd,
+`3` eller `1,5`. Tiderna under uppdateras medan man skriver. Utan JavaScript
+finns en vanlig **Visa tider**-knapp i stället, och resultatet blir detsamma. Längden måste hålla sig mellan `min_duration_minutes` och
+`max_duration_minutes` och gå jämnt ut i `slot_step_minutes`. Snabbvalen
+fungerar alltid, även om de skulle ligga utanför de gränserna.
 
 Utan `custom_duration` går bara längderna i `durations` att boka, precis som
 förut.

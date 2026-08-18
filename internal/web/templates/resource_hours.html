@@ -53,25 +53,37 @@
 		{{end}}
 
 		{{if $h.AllowCustom}}
-		<form class="custom-duration{{if $h.IsCustom}} is-selected{{end}}"
-		      method="get" action="/resurs/{{$res.ID}}">
-			<input type="hidden" name="datum" value="{{isoDate $h.Day.Date}}">
-			<label for="langd">Egen längd</label>
-			<input id="langd" name="langd" type="text" inputmode="decimal"
-			       value="{{$h.CustomValue}}" placeholder="t.ex. 3" size="4"
-			       aria-describedby="langd-hint">
-			<span class="unit">tim</span>
-			<button type="submit" class="button small">Visa</button>
-		</form>
+		<a class="pill pill-custom{{if $h.ShowCustom}} is-selected{{end}}"
+		   href="/resurs/{{$res.ID}}?datum={{isoDate $h.Day.Date}}&amp;langd={{$h.CustomParam}}&amp;egen=1"
+		   aria-expanded="{{if $h.ShowCustom}}true{{else}}false{{end}}" aria-controls="egen-langd">
+			Egen längd
+			<small>välj själv</small>
+		</a>
 		{{end}}
 	</div>
 
-	{{if $h.AllowCustom}}
-	{{if $h.CustomError}}<p class="alert alert-warn custom-note">{{$h.CustomError}}</p>{{end}}
-	<p class="hint custom-note" id="langd-hint">
-		Egen längd: mellan {{$h.MinLabel}} och {{$h.MaxLabel}}, i jämna steg om
-		{{$h.StepLabel}}. Skriv <code>1,5</code> för en och en halv timme.
-	</p>
+	{{if and $h.AllowCustom $h.ShowCustom}}
+	<div class="custom-panel" id="egen-langd">
+		<form method="get" action="/resurs/{{$res.ID}}" class="custom-duration"
+		      data-live-duration>
+			<input type="hidden" name="datum" value="{{isoDate $h.Day.Date}}">
+			<input type="hidden" name="egen" value="1">
+			<label for="langd">Hur många timmar?</label>
+			<input id="langd" name="langd" type="text" inputmode="decimal"
+			       value="{{$h.CustomValue}}" placeholder="t.ex. 3" size="4"
+			       autofocus autocomplete="off" aria-describedby="langd-hint">
+			<span class="unit">tim</span>
+			<button type="submit" class="button primary small">Visa tider</button>
+		</form>
+		<div id="custom-feedback">
+			{{with $h.CustomError}}<p class="alert alert-warn custom-note">{{.}}</p>{{end}}
+		</div>
+		<p class="hint" id="langd-hint">
+			Mellan {{$h.MinLabel}} och {{$h.MaxLabel}}, i jämna steg om {{$h.StepLabel}}.
+			Skriv <code>1,5</code> för en och en halv timme. Tiderna nedan
+			uppdateras medan du skriver.
+		</p>
+	</div>
 	{{end}}
 
 	<div class="timeline" aria-hidden="true">
@@ -88,6 +100,7 @@
 		</div>
 	</div>
 
+	<div id="slot-area" aria-live="polite">
 	<h3 class="slots-title">
 		Lediga starttider {{relativeDay $h.Day.Date .Now}} – {{dateLong $h.Day.Date}}
 		<small>{{duration $h.Duration}}</small>
@@ -100,7 +113,7 @@
 		{{range $h.Day.Slots}}
 			{{if .Available}}
 			<a class="slot{{if and $h.Selected (eq (clock (local .Start)) (clock (local $h.Selected.Start)))}} is-selected{{end}}"
-			   href="/resurs/{{$res.ID}}?datum={{isoDate (local .Start)}}&amp;langd={{$h.Param}}&amp;start={{clock (local .Start)}}#boka">
+			   href="/resurs/{{$res.ID}}?datum={{isoDate (local .Start)}}&amp;langd={{$h.Param}}{{if $h.ShowCustom}}&amp;egen=1{{end}}&amp;start={{clock (local .Start)}}#boka">
 				<strong>{{clock (local .Start)}}</strong>
 				<small>till {{clock (local .End)}}</small>
 			</a>
@@ -113,6 +126,7 @@
 		{{end}}
 	</div>
 	{{end}}
+	</div>
 </section>
 
 {{if $h.Selected}}

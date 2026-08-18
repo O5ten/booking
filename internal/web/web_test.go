@@ -585,18 +585,84 @@ func storeBooking(h *harness, day time.Time, hour, length int) store.Booking {
 
 // --- Typed-in booking lengths ----------------------------------------------
 
-func TestCustomDurationFieldOnlyWhereAllowed(t *testing.T) {
+func TestCustomDurationOfferedOnlyWhereAllowed(t *testing.T) {
 	h := newHarness(t)
 	member := h.login("husets-losenord")
 
 	with := h.do("GET", "/resurs/ellastcykel", nil, member).Body.String()
 	if !strings.Contains(with, "Egen längd") {
-		t.Error("the bike allows custom lengths, so the field should be there")
+		t.Error("the bike allows custom lengths, so the button should be there")
 	}
 
 	without := h.do("GET", "/resurs/elcykel", nil, member).Body.String()
 	if strings.Contains(without, "Egen längd") {
-		t.Error("elcykel has custom lengths off; the field must not appear")
+		t.Error("elcykel has custom lengths off; the button must not appear")
+	}
+}
+
+// The field is behind the "egen längd" button, the same way the fixed lengths
+// are behind their buttons.
+func TestCustomDurationFieldIsHiddenUntilChosen(t *testing.T) {
+	h := newHarness(t)
+	member := h.login("husets-losenord")
+	day := h.date(1)
+
+	closed := h.do("GET", "/resurs/ellastcykel?datum="+day, nil, member).Body.String()
+	if !strings.Contains(closed, "Egen längd") {
+		t.Fatal("the button should be in the row")
+	}
+	if strings.Contains(closed, `id="egen-langd"`) || strings.Contains(closed, `name="langd" type="text"`) {
+		t.Error("the field must stay hidden until the button is clicked")
+	}
+	if !strings.Contains(closed, `aria-expanded="false"`) {
+		t.Error("the closed button should report aria-expanded=false")
+	}
+
+	opened := h.do("GET", "/resurs/ellastcykel?datum="+day+"&egen=1", nil, member).Body.String()
+	if !strings.Contains(opened, `id="egen-langd"`) {
+		t.Error("clicking the button should reveal the field")
+	}
+	if !strings.Contains(opened, `aria-expanded="true"`) {
+		t.Error("the open button should report aria-expanded=true")
+	}
+	if !strings.Contains(opened, `pill pill-custom is-selected`) {
+		t.Error("the button should look selected once chosen")
+	}
+	// The field starts from the length already on screen, not empty.
+	if !strings.Contains(opened, `value="1"`) {
+		t.Error("the field should be seeded with the current length")
+	}
+}
+
+// Picking a fixed length again closes the field.
+func TestChoosingAPresetClosesTheCustomField(t *testing.T) {
+	h := newHarness(t)
+	member := h.login("husets-losenord")
+	day := h.date(1)
+
+	body := h.do("GET", "/resurs/ellastcykel?datum="+day+"&langd=2", nil, member).Body.String()
+	if strings.Contains(body, `id="egen-langd"`) {
+		t.Error("a preset length should leave the custom field closed")
+	}
+	if !strings.Contains(body, `class="pill is-selected`) {
+		t.Error("the chosen preset should look selected")
+	}
+}
+
+// A typed length that breaks a rule keeps the field open with the complaint.
+func TestBadTypedLengthKeepsTheFieldOpen(t *testing.T) {
+	h := newHarness(t)
+	member := h.login("husets-losenord")
+
+	body := h.do("GET", "/resurs/ellastcykel?datum="+h.date(1)+"&egen=1&langd=99", nil, member).Body.String()
+	if !strings.Contains(body, `id="egen-langd"`) {
+		t.Error("the field should stay open so the member can correct it")
+	}
+	if !strings.Contains(body, "Längsta") {
+		t.Error("the complaint should be shown")
+	}
+	if !strings.Contains(body, `value="99"`) {
+		t.Error("what they typed should stay in the field")
 	}
 }
 
@@ -609,10 +675,15 @@ func TestResourcePageAcceptsATypedLength(t *testing.T) {
 	if !strings.Contains(body, "3 h 30 min") {
 		t.Error("the slot list should be built for the typed 3.5 hour length")
 	}
-	// The value stays in the field, in Swedish form, and no preset is active.
+	// The value stays in the field, in Swedish form...
 	if !strings.Contains(body, `value="3,5"`) {
 		t.Error("the typed value should stay in the field")
 	}
+	// ...the "egen längd" button is the active one...
+	if !strings.Contains(body, `pill pill-custom is-selected`) {
+		t.Error("the custom length button should look selected")
+	}
+	// ...and no preset button is.
 	if strings.Contains(body, `class="pill is-selected`) {
 		t.Error("no preset button should look selected for a custom length")
 	}
@@ -787,5 +858,53 @@ func TestResourcePageLinksToUpcoming(t *testing.T) {
 			!strings.Contains(body, "/resurs/gastrum-1/bokningar") {
 			t.Errorf("%s should link to the upcoming bookings page", path)
 		}
+	}
+}
+
+// The live-update script swaps these two regions. If a template change drops
+// an id, typing would quietly stop updating the times.
+func TestCustomPanelHasTheHooksTheScriptNeeds(t *testing.T) {
+	h := newHarness(t)
+	member := h.login("husets-losenord")
+
+	body := h.do("GET", "/resurs/ellastcykel?datum="+h.date(1)+"&egen=1", nil, member).Body.String()
+	for _, hook := range []string{
+		`data-live-duration`,   // the form the script binds to
+		`id="slot-area"`,       // replaced when a new length is accepted
+		`id="custom-feedback"`, // replaced always, and carries any complaint
+		`name="langd"`,
+		`name="datum"`,
+		`name="egen"`,
+	} {
+		if !strings.Contains(body, hook) {
+			t.Errorf("the custom length panel is missing %s, which the live update needs", hook)
+		}
+	}
+
+	// The complaint must land inside the feedback box, since the script uses
+	// its presence there to decide whether to keep the times on screen.
+	bad := h.do("GET", "/resurs/ellastcykel?datum="+h.date(1)+"&egen=1&langd=99", nil, member).Body.String()
+	start := strings.Index(bad, `id="custom-feedback"`)
+	if start < 0 {
+		t.Fatal("no feedback box")
+	}
+	end := strings.Index(bad[start:], "</div>")
+	if end < 0 || !strings.Contains(bad[start:start+end], "alert") {
+		t.Error("a rejected length should put its alert inside #custom-feedback")
+	}
+}
+
+// Without JavaScript the form still has to work on its own.
+func TestCustomLengthWorksAsAPlainFormSubmit(t *testing.T) {
+	h := newHarness(t)
+	member := h.login("husets-losenord")
+
+	// Exactly what the browser sends when the form is submitted normally.
+	body := h.do("GET", "/resurs/ellastcykel?datum="+h.date(1)+"&egen=1&langd=2%2C5", nil, member).Body.String()
+	if !strings.Contains(body, "2 h 30 min") {
+		t.Error("a plain form submit should produce the 2.5 hour slot list")
+	}
+	if !strings.Contains(body, `class="button primary small"`) {
+		t.Error("the submit button must be in the HTML for people without JavaScript")
 	}
 }

@@ -33,10 +33,11 @@ resources:
     name: Ellastcykeln
     emoji: 🚲
     description: Elektrisk lastcykel med plats för barn eller storhandling.
-    location: Cykelrummet i källaren
+    location: Cykelrummet på markplan
     instructions: >-
-      Nyckeln sitter i nyckelskåpet vid torget. Sätt tillbaka cykeln på laddning
-      när du är klar, och meddela i Mattermost om något gått sönder.
+      Nyckeln sitter i nyckelskåpet vid torget. Ställ tillbaka cykeln i
+      cykelrummet på markplan och sätt den på laddning när du är klar, och
+      meddela i Mattermost om något gått sönder.
     info_url: https://rudbeckia.nu/huset/cykelrummet/
     booking:
       mode: hours
@@ -45,7 +46,8 @@ resources:
       # Låter den som bokar skriva in en egen längd i stället, t.ex. 1,5 eller 6.
       custom_duration: true
       min_duration_minutes: 30
-      max_duration_minutes: 600
+      # Hela öppettiden, 06:00–22:00.
+      max_duration_minutes: 960
       slot_step_minutes: 30
       buffer_minutes: 15
       open_from: "06:00"
@@ -60,17 +62,18 @@ resources:
     name: Elcykeln
     emoji: ⚡
     description: Vanlig elcykel för snabba ärenden och pendling.
-    location: Cykelrummet i källaren
+    location: Cykelrummet på markplan
     instructions: >-
-      Nyckeln sitter i nyckelskåpet vid torget. Ställ tillbaka cykeln på
-      laddning när du är klar.
+      Nyckeln sitter i nyckelskåpet vid torget. Ställ tillbaka cykeln i
+      cykelrummet på markplan och sätt den på laddning när du är klar.
     info_url: https://rudbeckia.nu/huset/cykelrummet/
     booking:
       mode: hours
       durations: [1, 2, 4, 8]
       custom_duration: true
       min_duration_minutes: 30
-      max_duration_minutes: 600
+      # Hela öppettiden, 06:00–22:00.
+      max_duration_minutes: 960
       slot_step_minutes: 30
       buffer_minutes: 15
       open_from: "06:00"

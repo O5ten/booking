@@ -1,6 +1,8 @@
 {{define "content"}}
 <div class="auth">
 	<div class="auth-card">
+		<img class="auth-mark" src="/static/rudbeckia.png" alt=""
+		     width="64" height="64" decoding="async">
 		<h1>{{.Site.Title}}</h1>
 		<p class="muted">{{if .Site.Tagline}}{{.Site.Tagline}}{{else}}Boka husets gemensamma cyklar och lokaler.{{end}}</p>
 		{{with .Data.Error}}<p class="alert alert-error" role="alert">{{.}}</p>{{end}}

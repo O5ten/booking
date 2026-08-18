@@ -47,11 +47,20 @@ type DayView struct {
 }
 
 // dayWindow returns the bookable window of a local calendar day.
+//
+// The times are built from the calendar clock rather than by adding an offset
+// to midnight: on the two days a year the clocks change, adding six hours to
+// midnight lands on 07:00 or 05:00, and the resource would appear to open at
+// the wrong time. Opening hours follow the wall clock, so 06:00 means 06:00.
 func dayWindow(r config.Resource, day time.Time, loc *time.Location) (time.Time, time.Time) {
 	from, _ := config.ParseClock(r.Rules.OpenFrom)
 	to, _ := config.ParseClock(r.Rules.OpenTo)
-	midnight := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, loc)
-	return midnight.Add(time.Duration(from) * time.Minute), midnight.Add(time.Duration(to) * time.Minute)
+	at := func(minutes int) time.Time {
+		// time.Date normalises an hour of 24 into midnight the next day, which
+		// is exactly what open_to: "24:00" means.
+		return time.Date(day.Year(), day.Month(), day.Day(), minutes/60, minutes%60, 0, 0, loc)
+	}
+	return at(from), at(to)
 }
 
 // blocked reports whether [start, end) collides with an existing booking once

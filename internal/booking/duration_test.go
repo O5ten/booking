@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/config"
+	"github.com/mikaelo/booking.rudbeckia.nu/internal/store"
 )
 
 // flexibleBike allows a typed-in length; the plain bike() does not.
@@ -222,5 +223,98 @@ func TestCustomLengthStillRespectsOpeningHours(t *testing.T) {
 	}, now, loc)
 	if !strings.Contains(messages(errs), "kan bokas mellan") {
 		t.Errorf("expected an opening-hours complaint, got %q", messages(errs))
+	}
+}
+
+// A length covering the whole opening window must be bookable: 06:00–22:00 is
+// exactly 16 hours, and it should leave exactly one possible start time.
+func TestFullDayLength(t *testing.T) {
+	loc := stockholm(t)
+	res := flexibleBike() // open 06:00–22:00
+	res.Rules.MaxDurationMinutes = 16 * 60
+
+	if err := CheckDuration(res, 16*time.Hour); err != nil {
+		t.Fatalf("16 h should be allowed: %s", err.Message)
+	}
+	if err := CheckDuration(res, 16*time.Hour+30*time.Minute); err == nil {
+		t.Error("16 h 30 min is over the limit and should be refused")
+	}
+
+	now := at(loc, "2026-05-01 08:00")
+	view := BuildDay(res, at(loc, "2026-05-02 00:00"), 16*time.Hour, nil, now, loc, "")
+	if len(view.Slots) != 1 {
+		t.Fatalf("a 16 h booking has %d possible starts, want exactly 1", len(view.Slots))
+	}
+	slot := view.Slots[0]
+	if got := clockOf(slot.Start.In(loc)); got != "06:00" {
+		t.Errorf("the only start is %s, want 06:00", got)
+	}
+	if got := clockOf(slot.End.In(loc)); got != "22:00" {
+		t.Errorf("it ends %s, want 22:00", got)
+	}
+	if !slot.Available {
+		t.Errorf("the full-day slot should be free on an empty day: %s", slot.Reason)
+	}
+}
+
+func TestFullDayBookingValidates(t *testing.T) {
+	loc := stockholm(t)
+	st := newStore(t)
+	res := flexibleBike()
+	res.Rules.MaxDurationMinutes = 16 * 60
+	res.Rules.MaxHoursPerWeekPerUser = 0 // tested separately
+
+	_, _, errs := Validate(context.Background(), st, Request{
+		Resource: res,
+		Start:    at(loc, "2026-05-02 06:00"),
+		End:      at(loc, "2026-05-02 22:00"),
+		Name:     "Anna", Email: "anna@example.se",
+	}, at(loc, "2026-05-01 08:00"), loc)
+	if len(errs) != 0 {
+		t.Errorf("a full-day booking should be accepted: %s", messages(errs))
+	}
+}
+
+// A full-day booking uses the whole two-week hour allowance the bikes are
+// configured with. Documenting it here so the interaction is deliberate: the
+// booking itself goes through, but nothing else fits beside it.
+func TestFullDayBookingConsumesTheWeeklyAllowance(t *testing.T) {
+	loc := stockholm(t)
+	st := newStore(t)
+	res := flexibleBike()
+	res.Rules.MaxDurationMinutes = 16 * 60
+	res.Rules.MaxHoursPerWeekPerUser = 16
+	res.Rules.MaxActivePerUser = 0
+	now := at(loc, "2026-05-01 08:00")
+
+	full := Request{
+		Resource: res,
+		Start:    at(loc, "2026-05-02 06:00"),
+		End:      at(loc, "2026-05-02 22:00"),
+		Name:     "Anna", Email: "anna@example.se",
+	}
+	_, _, errs := Validate(context.Background(), st, full, now, loc)
+	if len(errs) != 0 {
+		t.Fatalf("a 16 h booking should sit exactly on the 16 h allowance: %s", messages(errs))
+	}
+
+	// Store it, then try to add an hour later the same week.
+	b := store.Booking{
+		ID: "full", ResourceID: res.ID, Start: full.Start, End: full.End,
+		Name: full.Name, Email: full.Email,
+		Status: store.StatusConfirmed, CreatedAt: now,
+	}
+	if err := st.Create(context.Background(), b, b.Start, b.End); err != nil {
+		t.Fatalf("store: %v", err)
+	}
+
+	_, _, errs = Validate(context.Background(), st, Request{
+		Resource: res,
+		Start:    at(loc, "2026-05-04 10:00"),
+		End:      at(loc, "2026-05-04 11:00"),
+		Name:     "Anna", Email: "anna@example.se",
+	}, now, loc)
+	if !strings.Contains(messages(errs), "gränsen är") {
+		t.Errorf("a second booking should hit the allowance, got %q", messages(errs))
 	}
 }

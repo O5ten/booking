@@ -30,15 +30,18 @@ type hourPage struct {
 	Param    string
 	Selected *booking.Slot
 
-	// AllowCustom turns on the "own length" field beside the preset buttons.
+	// AllowCustom turns on the "own length" choice beside the preset buttons.
 	AllowCustom bool
-	// IsCustom is true when the chosen length is not one of the presets, so
-	// the field shows as the active choice instead of a button.
-	IsCustom bool
-	// CustomValue is what belongs in the field: "2" or "2,5".
+	// ShowCustom is true once that choice has been picked, which is when the
+	// field appears. Until then it is just one more button in the row.
+	ShowCustom bool
+	// CustomValue seeds the field: the current length as "2" or "2,5".
 	CustomValue string
 	// CustomError explains a typed length that could not be used.
 	CustomError string
+	// CustomParam keeps the current length in the link that opens the field,
+	// so the field starts from what the member is already looking at.
+	CustomParam string
 	MinLabel    string
 	MaxLabel    string
 	StepLabel   string
@@ -204,16 +207,21 @@ func (s *Server) buildHourPage(r *http.Request, res config.Resource, now time.Ti
 	}
 
 	page.AllowCustom = res.Rules.CustomDuration
-	page.IsCustom = page.AllowCustom && !booking.IsPreset(res, dur)
 	if page.AllowCustom {
+		// The field opens when the member picks "egen längd", and stays open
+		// whenever the current length is one they typed rather than a preset.
+		page.ShowCustom = q.Get("egen") == "1" ||
+			customErr != "" ||
+			!booking.IsPreset(res, dur)
 		page.MinLabel = booking.FormatDuration(time.Duration(res.Rules.MinDurationMinutes) * time.Minute)
 		page.MaxLabel = booking.FormatDuration(time.Duration(res.Rules.MaxDurationMinutes) * time.Minute)
 		page.StepLabel = booking.FormatDuration(time.Duration(res.Rules.SlotStepMinutes) * time.Minute)
+		page.CustomParam = booking.HoursParam(dur)
 		page.CustomError = customErr
-		switch {
-		case customErr != "" && q.Get("langd") != "":
+		if customErr != "" && q.Get("langd") != "" {
+			// Keep what they typed on screen beside the complaint.
 			page.CustomValue = q.Get("langd")
-		case page.IsCustom:
+		} else {
 			page.CustomValue = booking.FormatHoursInput(dur)
 		}
 	}
@@ -225,7 +233,7 @@ func (s *Server) buildHourPage(r *http.Request, res config.Resource, now time.Ti
 		page.Durations = append(page.Durations, durationTab{
 			Param:    booking.HoursParam(cand),
 			Label:    booking.FormatDuration(cand),
-			Selected: cand == dur,
+			Selected: cand == dur && !page.ShowCustom,
 			Free:     dv.FreeCount,
 		})
 	}

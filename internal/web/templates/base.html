@@ -7,7 +7,8 @@
 <meta name="color-scheme" content="light dark">
 <title>{{if .Title}}{{.Title}} · {{end}}{{.Site.Title}}</title>
 <link rel="stylesheet" href="/static/app.css">
-<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/static/rudbeckia.png" type="image/png">
+<link rel="apple-touch-icon" href="/static/rudbeckia.png">
 <script src="/static/app.js" defer></script>
 </head>
 <body>
@@ -15,12 +16,8 @@
 <header class="topbar">
 	<div class="topbar-inner">
 		<a class="brand" href="/">
-			<span class="brand-mark" aria-hidden="true">
-				<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-					<circle cx="12" cy="12" r="3.2"/>
-					<path d="M12 2.2c1.6 2.4 1.6 4.2 0 6.6-1.6-2.4-1.6-4.4 0-6.6ZM21.8 12c-2.4 1.6-4.2 1.6-6.6 0 2.4-1.6 4.4-1.6 6.6 0ZM12 21.8c-1.6-2.4-1.6-4.2 0-6.6 1.6 2.4 1.6 4.4 0 6.6ZM2.2 12c2.4-1.6 4.2-1.6 6.6 0-2.4 1.6-4.4 1.6-6.6 0Z"/>
-				</svg>
-			</span>
+			<img class="brand-mark" src="/static/rudbeckia.png" alt=""
+			     width="32" height="32" decoding="async">
 			<span class="brand-text">
 				<strong>{{.Site.Title}}</strong>
 				{{if .Site.Tagline}}<small>{{.Site.Tagline}}</small>{{end}}

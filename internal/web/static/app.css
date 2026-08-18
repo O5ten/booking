@@ -137,6 +137,10 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
+/* A class that sets `display` beats the browser's own rule for [hidden], so
+   say it here once rather than being surprised by it per component. */
+[hidden] { display: none !important; }
+
 html { -webkit-text-size-adjust: 100%; }
 
 body {
@@ -194,7 +198,10 @@ hr.rule { border: 0; border-top: 1px solid var(--line); margin: 1.5rem 0; }
 	display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap;
 }
 .brand { display: flex; align-items: center; gap: .6rem; color: var(--text); text-decoration: none; }
-.brand-mark { color: var(--accent); display: flex; }
+.brand-mark {
+	/* The house's own rudbeckia, the same file rudbeckia.nu uses. */
+	width: 32px; height: 32px; display: block; flex: 0 0 auto;
+}
 .brand-text { display: flex; flex-direction: column; line-height: 1.2; }
 .brand-text strong { font-weight: 600; font-size: 1rem; }
 .brand-text small { color: var(--text-muted); font-size: .75rem; }
@@ -575,22 +582,27 @@ label { font-size: .85rem; }
 	padding: .1em .4em; font-family: var(--font-mono); font-size: .92em;
 }
 
-/* "Own length" sits in the same row as the preset buttons and reads as one
-   more choice among them. */
-.custom-duration {
-	display: inline-flex; align-items: center; gap: .4rem;
-	border: 1px solid var(--line); border-radius: 999px;
-	padding: .2rem .35rem .2rem .85rem; background: var(--bg);
+/* "Egen längd" is one more button in the row; picking it opens this panel. */
+.custom-panel {
+	margin: 0 0 1.25rem; padding: .9rem 1.1rem;
+	background: var(--accent-soft); border-radius: var(--radius);
+	border: 1px solid var(--accent-line);
 }
-.custom-duration.is-selected { background: var(--accent-soft); border-color: var(--accent); }
-.custom-duration label { color: var(--text-muted); font-size: .9rem; white-space: nowrap; }
-.custom-duration.is-selected label { color: var(--accent-strong); }
+.custom-duration { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.custom-duration label { color: var(--accent-strong); font-size: .9rem; white-space: nowrap; }
 .custom-duration input {
-	width: 3.6rem; min-height: 0; padding: .2rem .4rem; text-align: center;
-	font-size: .9rem;
+	width: 4.5rem; min-height: 0; padding: .35rem .5rem; text-align: center;
+	font-size: .95rem;
 }
-.custom-duration .unit { color: var(--text-faint); font-size: .82rem; }
-.custom-duration .button { padding: .25rem .6rem; }
+.custom-duration .unit { color: var(--text-muted); font-size: .85rem; }
+.custom-panel .hint { margin: .6rem 0 0; }
+/* The panel is already accent-coloured, so a warning painted in the same
+   yellow would vanish into it. Sit it on the page background instead. */
+.custom-panel .alert-warn {
+	margin: .7rem 0 0; padding: .5rem .8rem;
+	background: var(--bg); color: var(--warn-text);
+	border-left: 3px solid var(--warn-text); border-radius: var(--radius-sm);
+}
 .custom-note { margin: .75rem 0 0; }
 .hint code {
 	background: var(--bg-sunk); border-radius: 3px; padding: .05em .3em;
@@ -629,3 +641,9 @@ label { font-size: .85rem; }
 /* A second link on a card, outside the big clickable area. */
 .card-aside { margin: 0; padding: 0 1.25rem 1.1rem; font-size: .82rem; }
 .head-links { margin-top: 1rem; font-size: .9rem; }
+
+.auth-mark { width: 56px; height: 56px; display: block; margin: 0 0 1rem; }
+
+/* The times dim briefly while a new length is being fetched. */
+#slot-area { transition: opacity .12s ease-out; }
+#slot-area.is-loading { opacity: .45; }
