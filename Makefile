@@ -43,8 +43,9 @@ check: fmt vet race ## Format, vet and test — run this before pushing
 build: ## Build the binary into ./booking
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o $(BINARY) ./cmd/server
 
-image: ## Build the container image locally
-	docker build -t $(IMAGE):local .
+image: ## Build the container image locally, tagged :local and :latest
+	docker build -t $(IMAGE):local -t $(IMAGE):latest .
+	@docker images --format '  {{.Repository}}:{{.Tag}}  {{.Size}}' $(IMAGE)
 
 clean: ## Remove build output and the local databases
 	rm -rf $(BINARY) data/

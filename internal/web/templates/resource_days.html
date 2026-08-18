@@ -13,6 +13,9 @@
 		{{with $res.Location}}<li><span>Var</span><strong>{{.}}</strong></li>{{end}}
 	</ul>
 	{{with $res.Instructions}}<p class="note">{{.}}</p>{{end}}
+	<p class="head-links">
+		<a class="quiet-link" href="/resurs/{{$res.ID}}/bokningar">Se alla kommande bokningar →</a>
+	</p>
 </header>
 
 {{with .Data.Errors}}

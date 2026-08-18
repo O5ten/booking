@@ -6,7 +6,8 @@
 	<h1>{{with $res.Emoji}}<span aria-hidden="true">{{.}}</span> {{end}}{{$res.Name}}</h1>
 	{{with $res.Description}}<p class="lede">{{.}}</p>{{end}}
 	<ul class="facts">
-		<li><span>Bokningsbara längder</span><strong>{{$rules.Durations}}</strong></li>
+		<li><span>Snabbval</span><strong>{{$rules.Durations}}</strong></li>
+		{{with $rules.Custom}}<li><span>Egen längd</span><strong>{{.}}</strong></li>{{end}}
 		<li><span>Öppet för bokning</span><strong>{{$rules.Window}}</strong></li>
 		{{with $rules.Buffer}}<li><span>Paus mellan bokningar</span><strong>{{.}}</strong></li>{{end}}
 		<li><span>Max i förväg</span><strong>{{$rules.Advance}}</strong></li>
@@ -14,6 +15,9 @@
 		{{with $res.Location}}<li><span>Var</span><strong>{{.}}</strong></li>{{end}}
 	</ul>
 	{{with $res.Instructions}}<p class="note">{{.}}</p>{{end}}
+	<p class="head-links">
+		<a class="quiet-link" href="/resurs/{{$res.ID}}/bokningar">Se alla kommande bokningar →</a>
+	</p>
 </header>
 
 {{with .Data.Errors}}
@@ -28,7 +32,7 @@
 	<div class="daystrip" role="tablist">
 		{{range $h.Days}}
 		<a class="daytab{{if .Selected}} is-selected{{end}}{{if not .Free}} is-full{{end}}"
-		   href="/resurs/{{$res.ID}}?datum={{isoDate .Date}}&amp;langd={{printf "%v" $h.Duration.Hours}}"
+		   href="/resurs/{{$res.ID}}?datum={{isoDate .Date}}&amp;langd={{$h.Param}}"
 		   {{if .Selected}}aria-current="date"{{end}}>
 			<span class="daytab-wd">{{weekdayShort .Date}}</span>
 			<span class="daytab-num">{{.Date.Day}}</span>
@@ -42,12 +46,33 @@
 		<span class="durations-label">Hur länge?</span>
 		{{range $h.Durations}}
 		<a class="pill{{if .Selected}} is-selected{{end}}{{if eq .Free 0}} is-empty{{end}}"
-		   href="/resurs/{{$res.ID}}?datum={{isoDate $h.Day.Date}}&amp;langd={{printf "%v" .Value}}">
+		   href="/resurs/{{$res.ID}}?datum={{isoDate $h.Day.Date}}&amp;langd={{.Param}}">
 			{{.Label}}
 			<small>{{if eq .Free 0}}fullt{{else}}{{.Free}} tider{{end}}</small>
 		</a>
 		{{end}}
+
+		{{if $h.AllowCustom}}
+		<form class="custom-duration{{if $h.IsCustom}} is-selected{{end}}"
+		      method="get" action="/resurs/{{$res.ID}}">
+			<input type="hidden" name="datum" value="{{isoDate $h.Day.Date}}">
+			<label for="langd">Egen längd</label>
+			<input id="langd" name="langd" type="text" inputmode="decimal"
+			       value="{{$h.CustomValue}}" placeholder="t.ex. 3" size="4"
+			       aria-describedby="langd-hint">
+			<span class="unit">tim</span>
+			<button type="submit" class="button small">Visa</button>
+		</form>
+		{{end}}
 	</div>
+
+	{{if $h.AllowCustom}}
+	{{if $h.CustomError}}<p class="alert alert-warn custom-note">{{$h.CustomError}}</p>{{end}}
+	<p class="hint custom-note" id="langd-hint">
+		Egen längd: mellan {{$h.MinLabel}} och {{$h.MaxLabel}}, i jämna steg om
+		{{$h.StepLabel}}. Skriv <code>1,5</code> för en och en halv timme.
+	</p>
+	{{end}}
 
 	<div class="timeline" aria-hidden="true">
 		<div class="timeline-bar">
@@ -75,7 +100,7 @@
 		{{range $h.Day.Slots}}
 			{{if .Available}}
 			<a class="slot{{if and $h.Selected (eq (clock (local .Start)) (clock (local $h.Selected.Start)))}} is-selected{{end}}"
-			   href="/resurs/{{$res.ID}}?datum={{isoDate (local .Start)}}&amp;langd={{printf "%v" $h.Duration.Hours}}&amp;start={{clock (local .Start)}}#boka">
+			   href="/resurs/{{$res.ID}}?datum={{isoDate (local .Start)}}&amp;langd={{$h.Param}}&amp;start={{clock (local .Start)}}#boka">
 				<strong>{{clock (local .Start)}}</strong>
 				<small>till {{clock (local .End)}}</small>
 			</a>
@@ -101,7 +126,7 @@
 	<form method="post" action="/resurs/{{$res.ID}}/boka" class="booking-form">
 		<input type="hidden" name="datum" value="{{isoDate (local $h.Selected.Start)}}">
 		<input type="hidden" name="start" value="{{clock (local $h.Selected.Start)}}">
-		<input type="hidden" name="langd" value="{{printf "%v" $h.Duration.Hours}}">
+		<input type="hidden" name="langd" value="{{$h.Param}}">
 		{{template "bookingfields" .}}
 	</form>
 </section>

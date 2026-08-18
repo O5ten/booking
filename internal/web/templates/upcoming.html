@@ -1,0 +1,71 @@
+{{define "content"}}
+{{$res := .Data.Resource}}
+<nav class="crumbs">
+	<a href="/">Boka</a> <span aria-hidden="true">/</span>
+	<a href="/resurs/{{$res.ID}}">{{$res.Name}}</a> <span aria-hidden="true">/</span>
+	<span>Kommande bokningar</span>
+</nav>
+
+<header class="resource-head">
+	<h1>{{with $res.Emoji}}<span aria-hidden="true">{{.}}</span> {{end}}Kommande bokningar</h1>
+	<p class="lede">
+		Allt som är bokat av {{$res.Name}} från och med nu, i tidsordning.
+		{{if .Data.NextFree}}Nästa lediga tid är
+			{{relativeDay (local .Data.NextFree) .Now}}{{if not .Data.IsDays}} {{clock (local .Data.NextFree)}}{{end}}.{{end}}
+	</p>
+	<p>
+		<a class="button" href="/resurs/{{$res.ID}}">Boka en tid</a>
+		<a class="button ghost" href="{{.Data.Feed}}">Prenumerera i kalender <small>.ics</small></a>
+	</p>
+</header>
+
+{{if .Data.Groups}}
+<section class="panel">
+	<div class="panel-head">
+		<h2>{{.Data.Count}} bokningar</h2>
+		<span class="muted small">Passerade bokningar visas inte</span>
+	</div>
+
+	<ol class="agenda">
+		{{range .Data.Groups}}
+		<li class="agenda-day">
+			<h3 class="agenda-date{{if .Today}} is-today{{end}}">
+				{{titleCase (relativeDay .Date $.Now)}}
+				<small>{{dateLongYear .Date}}</small>
+			</h3>
+			<ul class="agenda-rows">
+				{{range .Rows}}
+				<li class="agenda-row{{if .Ongoing}} is-now{{end}}">
+					<span class="agenda-time">
+						{{if .Nights}}
+							{{clock .Start}}
+							<small>{{nights .Nights}}, till {{dateShort .End}} {{clock .End}}</small>
+						{{else}}
+							{{clock .Start}}–{{clock .End}}
+							<small>{{.Duration}}</small>
+						{{end}}
+					</span>
+					<span class="agenda-who">
+						<strong>{{.Booking.Name}}</strong>{{if .Booking.Apartment}} <span class="muted">lgh {{.Booking.Apartment}}</span>{{end}}
+						{{if .Ongoing}}<span class="badge badge-live">pågår nu</span>{{end}}
+						{{with .Booking.Note}}<small class="agenda-note">{{.}}</small>{{end}}
+					</span>
+					{{if $.Role.Admin}}
+					<a class="quiet-link agenda-link" href="/bokning/{{.Booking.ID}}">Visa</a>
+					{{end}}
+				</li>
+				{{end}}
+			</ul>
+		</li>
+		{{end}}
+	</ol>
+</section>
+{{else}}
+<section class="panel">
+	<p class="empty">
+		Inget är bokat än. <a href="/resurs/{{$res.ID}}">Boka {{$res.Name}}</a> så blir du först.
+	</p>
+</section>
+{{end}}
+{{end}}
+{{template "base" .}}

@@ -3,7 +3,6 @@ package web
 import (
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -115,7 +114,7 @@ func (s *Server) parseInterval(res config.Resource, r *http.Request, loc *time.L
 	case config.ModeHours:
 		date := r.FormValue("datum")
 		clock := r.FormValue("start")
-		hours, err := strconv.ParseFloat(r.FormValue("langd"), 64)
+		dur, err := booking.ParseHours(r.FormValue("langd"))
 		if err != nil {
 			return time.Time{}, time.Time{}, []booking.Error{{Field: "duration", Message: "Välj hur länge du vill boka."}}
 		}
@@ -123,7 +122,7 @@ func (s *Server) parseInterval(res config.Resource, r *http.Request, loc *time.L
 		if err != nil {
 			return time.Time{}, time.Time{}, []booking.Error{{Field: "time", Message: "Välj en starttid."}}
 		}
-		return start, start.Add(time.Duration(hours * float64(time.Hour))), nil
+		return start, start.Add(dur), nil
 	case config.ModeDays:
 		from, errA := time.ParseInLocation("2006-01-02", r.FormValue("fran"), loc)
 		to, errB := time.ParseInLocation("2006-01-02", r.FormValue("till"), loc)

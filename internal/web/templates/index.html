@@ -39,7 +39,7 @@
 				{{with .Resource.Description}}<p class="card-desc">{{.}}</p>{{end}}
 				<dl class="card-facts">
 					{{if eq .Rules.Mode "hours"}}
-					<div><dt>Längd</dt><dd>{{.Rules.Durations}}</dd></div>
+					<div><dt>Längd</dt><dd>{{.Rules.Durations}}{{with .Rules.Custom}}<br><span class="muted">eller egen: {{.}}</span>{{end}}</dd></div>
 					<div><dt>Tider</dt><dd>{{.Rules.Window}}</dd></div>
 					{{else}}
 					<div><dt>Längd</dt><dd>{{.Rules.Nights}}</dd></div>
@@ -56,6 +56,9 @@
 					<span class="card-cta">Boka →</span>
 				</footer>
 			</a>
+			<p class="card-aside">
+				<a class="quiet-link" href="/resurs/{{.Resource.ID}}/bokningar">Kommande bokningar</a>
+			</p>
 		</article>
 		{{end}}
 	</div>

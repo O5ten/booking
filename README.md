@@ -96,7 +96,10 @@ längd och starttid ur ett rutnät.
   instructions: Nyckeln sitter i nyckelskåpet vid torget.
   booking:
     mode: hours
-    durations: [1, 2, 4, 8]        # tillåtna längder i timmar
+    durations: [1, 2, 4, 8]        # snabbvalen som visas som knappar
+    custom_duration: true          # låt folk skriva in en egen längd
+    min_duration_minutes: 30       # kortaste egna längd
+    max_duration_minutes: 600      # längsta egna längd
     slot_step_minutes: 30          # starttider ligger på halvtimmen
     buffer_minutes: 15             # tvingande lucka mellan två bokningar
     open_from: "06:00"
@@ -106,6 +109,15 @@ längd och starttid ur ett rutnät.
     max_active_per_user: 2         # samtidiga bokningar per person
     max_hours_per_week_per_user: 16
 ```
+
+Med `custom_duration: true` står knapparna kvar som snabbval, men bredvid dem
+dyker ett fält upp där man kan skriva sin egen längd — `3` eller `1,5`. Den
+måste hålla sig mellan `min_duration_minutes` och `max_duration_minutes` och gå
+jämnt ut i `slot_step_minutes`. Snabbvalen fungerar alltid, även om de ligger
+utanför de gränserna.
+
+Utan `custom_duration` går bara längderna i `durations` att boka, precis som
+förut.
 
 **`mode: days`** – saker man bokar över natten, som gästrum. Medlemmen väljer
 in- och utcheckningsdatum i en månadskalender.
@@ -138,8 +150,10 @@ utgångspunkt när huset vill boka fler saker digitalt.
 | Nyckel | Gäller | Betyder |
 |---|---|---|
 | `mode` | båda | `hours` eller `days` |
-| `durations` | hours | tillåtna längder i timmar |
-| `slot_step_minutes` | hours | rutnätet starttider ligger på |
+| `durations` | hours | snabbvalen, i timmar |
+| `custom_duration` | hours | låter den som bokar skriva in en egen längd |
+| `min_duration_minutes`, `max_duration_minutes` | hours | gränser för en egen längd. Standard: ett slotsteg respektive det längsta snabbvalet |
+| `slot_step_minutes` | hours | rutnätet starttider ligger på, och steget en egen längd måste gå jämnt ut i |
 | `open_from`, `open_to` | hours | den del av dygnet som får bokas |
 | `min_days`, `max_days` | days | kortaste och längsta bokning i nätter |
 | `check_in`, `check_out` | days | klockslag för in- och utcheckning |
@@ -188,6 +202,11 @@ bifogad `.ics`-fil (Apple Calendar, Outlook, Thunderbird) och direktlänkar till
 Google Calendar och Outlook på webben. Mejlet innehåller också länken för att
 avboka.
 
+**Vem har bokat vad.** Varje resurs har en sida med alla kommande bokningar i
+tidsordning, på `/resurs/<id>/bokningar`, länkad från startsidan och från
+bokningssidan. Passerade bokningar visas inte — sidan svarar på frågan "när är
+den ledig?", inte "vem lånade den i mars?".
+
 **Kalenderflöden.** Varje resurs publicerar sina bokningar på
 `/kalender/<id>/flode.ics`, om huset vill visa dem i en gemensam kalender.
 
@@ -221,10 +240,19 @@ Varje push till `main` bygger en image och lägger den i GitHub Packages, för
 både `amd64` och `arm64`. Testerna körs först — går de inte igenom publiceras
 ingenting.
 
+| Tagg | Sätts när |
+|---|---|
+| `latest` | vid varje bygge från huvudgrenen, och vid en skarp version (`v1.2.3`) |
+| `main` | vid bygge från huvudgrenen |
+| `1.2.3`, `1.2` | vid en `v1.2.3`-tagg |
+| `sha-abc1234` | vid varje bygge, om du vill låsa en deploy till en exakt commit |
+
+En förhandsversion (`v1.2.3-rc1`) flyttar medvetet inte `latest`. Bygget
+kontrollerar själv att `latest` verkligen kom med, så regeln inte tappas bort
+vid en framtida ändring.
+
 ```
 ghcr.io/mikaelo/booking.rudbeckia.nu:latest
-ghcr.io/mikaelo/booking.rudbeckia.nu:sha-<commit>
-ghcr.io/mikaelo/booking.rudbeckia.nu:1.2.3   # från en v-tagg
 ```
 
 Uppdatera på servern:

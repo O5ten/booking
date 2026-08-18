@@ -77,8 +77,17 @@ type Rules struct {
 	Mode Mode `yaml:"mode"`
 
 	// --- hour mode ---
-	// Durations are the bookable lengths in hours, e.g. [1, 2, 4, 8].
+	// Durations are the offered lengths in hours, e.g. [1, 2, 4, 8]. They are
+	// the one-click choices; see CustomDuration for anything in between.
 	Durations []float64 `yaml:"durations"`
+	// CustomDuration lets a member type their own length instead of picking
+	// one of Durations. It still has to fit MinDuration/MaxDuration, the
+	// opening hours and the slot grid.
+	CustomDuration bool `yaml:"custom_duration"`
+	// MinDurationMinutes and MaxDurationMinutes bound a typed-in length.
+	// They default to the slot step and to the longest offered duration.
+	MinDurationMinutes int `yaml:"min_duration_minutes"`
+	MaxDurationMinutes int `yaml:"max_duration_minutes"`
 	// SlotStepMinutes is the grid that start times snap to.
 	SlotStepMinutes int `yaml:"slot_step_minutes"`
 	// OpenFrom/OpenTo bound the part of the day that can be booked ("06:00").
@@ -220,6 +229,22 @@ func normalizeRules(r *Resource) error {
 		}
 		if ru.SlotStepMinutes <= 0 {
 			ru.SlotStepMinutes = 30
+		}
+		if ru.MinDurationMinutes <= 0 {
+			ru.MinDurationMinutes = ru.SlotStepMinutes
+		}
+		if ru.MaxDurationMinutes <= 0 {
+			// The longest one-click choice, so turning on custom_duration
+			// alone never quietly widens what people may book.
+			ru.MaxDurationMinutes = int(ru.Durations[len(ru.Durations)-1] * 60)
+		}
+		if ru.MaxDurationMinutes < ru.MinDurationMinutes {
+			return fmt.Errorf("max_duration_minutes (%d) is smaller than min_duration_minutes (%d)",
+				ru.MaxDurationMinutes, ru.MinDurationMinutes)
+		}
+		if ru.MinDurationMinutes%ru.SlotStepMinutes != 0 {
+			return fmt.Errorf("min_duration_minutes (%d) must be a multiple of slot_step_minutes (%d)",
+				ru.MinDurationMinutes, ru.SlotStepMinutes)
 		}
 		if ru.OpenFrom == "" {
 			ru.OpenFrom = "00:00"

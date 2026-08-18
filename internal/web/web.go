@@ -44,7 +44,7 @@ type Server struct {
 // templates share one namespace per set.
 var pages = []string{
 	"index.html", "login.html", "error.html", "booking.html", "mine.html",
-	"admin.html", "resource_hours.html", "resource_days.html",
+	"admin.html", "resource_hours.html", "resource_days.html", "upcoming.html",
 }
 
 // layouts are included in every page set.
@@ -91,6 +91,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux.Handle("GET /{$}", s.member(s.handleIndex))
 	mux.Handle("GET /resurs/{id}", s.member(s.handleResource))
+	mux.Handle("GET /resurs/{id}/bokningar", s.member(s.handleResourceUpcoming))
 	mux.Handle("POST /resurs/{id}/boka", s.member(s.handleCreateBooking))
 	mux.Handle("GET /bokning/{id}", s.member(s.handleBooking))
 	mux.Handle("GET /bokning/{id}/kalender.ics", s.member(s.handleBookingICS))

@@ -3,7 +3,6 @@ package web
 import (
 	"net/http"
 	"net/url"
-	"strconv"
 	"time"
 
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/auth"
@@ -27,11 +26,27 @@ type hourPage struct {
 	Days      []dayTab
 	Durations []durationTab
 	Duration  time.Duration
-	Selected  *booking.Slot
+	// Param is the current length as it appears in links, in hours.
+	Param    string
+	Selected *booking.Slot
+
+	// AllowCustom turns on the "own length" field beside the preset buttons.
+	AllowCustom bool
+	// IsCustom is true when the chosen length is not one of the presets, so
+	// the field shows as the active choice instead of a button.
+	IsCustom bool
+	// CustomValue is what belongs in the field: "2" or "2,5".
+	CustomValue string
+	// CustomError explains a typed length that could not be used.
+	CustomError string
+	MinLabel    string
+	MaxLabel    string
+	StepLabel   string
 }
 
 type durationTab struct {
-	Value    float64
+	// Param is the value for the "langd" query parameter, in hours.
+	Param    string
 	Label    string
 	Selected bool
 	Free     int
@@ -99,14 +114,25 @@ func (s *Server) buildHourPage(r *http.Request, res config.Resource, now time.Ti
 	// that fails validation re-renders the very day and slot the member chose.
 	q := formValues(r)
 
-	// Which length is the member looking at?
+	// Which length is the member looking at? A preset always works; anything
+	// else is only honoured when the resource allows a typed-in length.
 	dur := time.Duration(res.Rules.Durations[0] * float64(time.Hour))
+	var customErr string
 	if raw := q.Get("langd"); raw != "" {
-		if f, err := strconv.ParseFloat(raw, 64); err == nil {
-			for _, d := range res.Rules.Durations {
-				if d == f {
-					dur = time.Duration(d * float64(time.Hour))
-				}
+		want, err := booking.ParseHours(raw)
+		switch {
+		case err != nil:
+			if res.Rules.CustomDuration {
+				customErr = TitleCase(err.Error()) + "."
+			}
+		case booking.IsPreset(res, want):
+			dur = want
+		case res.Rules.CustomDuration:
+			if verr := booking.CheckDuration(res, want); verr != nil {
+				// Keep the typed value on screen next to the complaint.
+				customErr = verr.Message
+			} else {
+				dur = want
 			}
 		}
 	}
@@ -144,7 +170,7 @@ func (s *Server) buildHourPage(r *http.Request, res config.Resource, now time.Ti
 		return nil, err
 	}
 
-	page := &hourPage{Duration: dur}
+	page := &hourPage{Duration: dur, Param: booking.HoursParam(dur)}
 	page.Day = booking.BuildDay(res, day, dur, existing, now, loc, myEmail)
 
 	// The date strip covers two weeks, or less if the resource does not reach.
@@ -177,12 +203,27 @@ func (s *Server) buildHourPage(r *http.Request, res config.Resource, now time.Ti
 		})
 	}
 
+	page.AllowCustom = res.Rules.CustomDuration
+	page.IsCustom = page.AllowCustom && !booking.IsPreset(res, dur)
+	if page.AllowCustom {
+		page.MinLabel = booking.FormatDuration(time.Duration(res.Rules.MinDurationMinutes) * time.Minute)
+		page.MaxLabel = booking.FormatDuration(time.Duration(res.Rules.MaxDurationMinutes) * time.Minute)
+		page.StepLabel = booking.FormatDuration(time.Duration(res.Rules.SlotStepMinutes) * time.Minute)
+		page.CustomError = customErr
+		switch {
+		case customErr != "" && q.Get("langd") != "":
+			page.CustomValue = q.Get("langd")
+		case page.IsCustom:
+			page.CustomValue = booking.FormatHoursInput(dur)
+		}
+	}
+
 	// How many starts each length has on this day, so the buttons can show it.
 	for _, d := range res.Rules.Durations {
 		cand := time.Duration(d * float64(time.Hour))
 		dv := booking.BuildDay(res, day, cand, existing, now, loc, myEmail)
 		page.Durations = append(page.Durations, durationTab{
-			Value:    d,
+			Param:    booking.HoursParam(cand),
 			Label:    booking.FormatDuration(cand),
 			Selected: cand == dur,
 			Free:     dv.FreeCount,

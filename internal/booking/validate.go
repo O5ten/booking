@@ -3,6 +3,8 @@ package booking
 import (
 	"context"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -119,16 +121,8 @@ func validateHours(r config.Resource, req Request, loc *time.Location) []Error {
 	var errs []Error
 
 	dur := req.End.Sub(req.Start)
-	ok := false
-	for _, d := range ru.Durations {
-		if durationOf(d) == dur {
-			ok = true
-			break
-		}
-	}
-	if !ok {
-		errs = append(errs, Error{Field: "duration", Message: fmt.Sprintf(
-			"Välj en av de tillåtna längderna: %s.", DurationList(ru.Durations))})
+	if err := CheckDuration(r, dur); err != nil {
+		errs = append(errs, *err)
 	}
 
 	local := req.Start.In(loc)
@@ -172,6 +166,90 @@ func pluralNights(n int) string {
 		return "1 natt"
 	}
 	return fmt.Sprintf("%d nätter", n)
+}
+
+// CheckDuration reports whether a length is bookable for a resource: one of
+// the offered choices, or — when the resource allows it — any typed-in length
+// that fits the configured bounds and the slot grid.
+func CheckDuration(r config.Resource, dur time.Duration) *Error {
+	ru := r.Rules
+	for _, d := range ru.Durations {
+		if durationOf(d) == dur {
+			return nil
+		}
+	}
+	if !ru.CustomDuration {
+		return &Error{Field: "duration", Message: fmt.Sprintf(
+			"Välj en av de tillåtna längderna: %s.", DurationList(ru.Durations))}
+	}
+
+	min := time.Duration(ru.MinDurationMinutes) * time.Minute
+	max := time.Duration(ru.MaxDurationMinutes) * time.Minute
+	step := time.Duration(ru.SlotStepMinutes) * time.Minute
+
+	switch {
+	case dur < min:
+		return &Error{Field: "duration", Message: fmt.Sprintf(
+			"Kortaste bokning är %s.", FormatDuration(min))}
+	case dur > max:
+		return &Error{Field: "duration", Message: fmt.Sprintf(
+			"Längsta bokning är %s.", FormatDuration(max))}
+	case dur%step != 0:
+		return &Error{Field: "duration", Message: fmt.Sprintf(
+			"Längden måste gå jämnt ut i %s. Prova %s eller %s.",
+			FormatDuration(step),
+			FormatDuration(dur/step*step),
+			FormatDuration((dur/step+1)*step))}
+	}
+	return nil
+}
+
+// ParseHours reads a typed-in length in hours. It accepts both "2.5" and the
+// Swedish "2,5", and rounds to whole minutes so floating point dust can never
+// turn 2.5 h into 2 h 29 min 59 s.
+func ParseHours(s string) (time.Duration, error) {
+	s = strings.TrimSpace(strings.Replace(s, ",", ".", 1))
+	if s == "" {
+		return 0, fmt.Errorf("ingen längd angiven")
+	}
+	hours, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%q är inte ett tal", s)
+	}
+	if hours <= 0 {
+		return 0, fmt.Errorf("längden måste vara större än noll")
+	}
+	return time.Duration(math.Round(hours*60)) * time.Minute, nil
+}
+
+// HoursParam renders a duration as the "langd" query parameter: hours, with a
+// dot, and no floating point dust. ParseHours reads it back exactly.
+func HoursParam(d time.Duration) string {
+	mins := int(d.Minutes())
+	if mins%60 == 0 {
+		return strconv.Itoa(mins / 60)
+	}
+	return strconv.FormatFloat(float64(mins)/60, 'f', -1, 64)
+}
+
+// FormatHoursInput renders a duration the way it should appear in the "own
+// length" field: "2" rather than "2.0", and "2,5" with a Swedish comma.
+func FormatHoursInput(d time.Duration) string {
+	hours := d.Minutes() / 60
+	if hours == math.Trunc(hours) {
+		return strconv.FormatFloat(hours, 'f', 0, 64)
+	}
+	return strings.Replace(strconv.FormatFloat(hours, 'f', -1, 64), ".", ",", 1)
+}
+
+// IsPreset reports whether a length is one of the one-click choices.
+func IsPreset(r config.Resource, dur time.Duration) bool {
+	for _, d := range r.Rules.Durations {
+		if durationOf(d) == dur {
+			return true
+		}
+	}
+	return false
 }
 
 // DurationList renders allowed durations as "1 h, 2 h, 4 h eller 8 h".

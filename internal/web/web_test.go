@@ -36,12 +36,25 @@ resources:
     booking:
       mode: hours
       durations: [1, 2, 4, 8]
+      custom_duration: true
+      min_duration_minutes: 30
+      max_duration_minutes: 600
       slot_step_minutes: 30
       buffer_minutes: 15
       open_from: "06:00"
       open_to: "22:00"
       max_advance_days: 30
       max_active_per_user: 2
+  - id: elcykel
+    category: cyklar
+    name: Elcykeln
+    booking:
+      mode: hours
+      durations: [1, 2, 4]
+      slot_step_minutes: 30
+      open_from: "06:00"
+      open_to: "22:00"
+      max_advance_days: 30
   - id: gastrum-1
     category: gastrum
     name: Gästrum 1
@@ -567,5 +580,212 @@ func storeBooking(h *harness, day time.Time, hour, length int) store.Booking {
 		Email:      "annan@example.se",
 		Status:     store.StatusConfirmed,
 		CreatedAt:  h.now,
+	}
+}
+
+// --- Typed-in booking lengths ----------------------------------------------
+
+func TestCustomDurationFieldOnlyWhereAllowed(t *testing.T) {
+	h := newHarness(t)
+	member := h.login("husets-losenord")
+
+	with := h.do("GET", "/resurs/ellastcykel", nil, member).Body.String()
+	if !strings.Contains(with, "Egen längd") {
+		t.Error("the bike allows custom lengths, so the field should be there")
+	}
+
+	without := h.do("GET", "/resurs/elcykel", nil, member).Body.String()
+	if strings.Contains(without, "Egen längd") {
+		t.Error("elcykel has custom lengths off; the field must not appear")
+	}
+}
+
+func TestResourcePageAcceptsATypedLength(t *testing.T) {
+	h := newHarness(t)
+	member := h.login("husets-losenord")
+	day := h.date(1)
+
+	body := h.do("GET", "/resurs/ellastcykel?datum="+day+"&langd=3,5", nil, member).Body.String()
+	if !strings.Contains(body, "3 h 30 min") {
+		t.Error("the slot list should be built for the typed 3.5 hour length")
+	}
+	// The value stays in the field, in Swedish form, and no preset is active.
+	if !strings.Contains(body, `value="3,5"`) {
+		t.Error("the typed value should stay in the field")
+	}
+	if strings.Contains(body, `class="pill is-selected`) {
+		t.Error("no preset button should look selected for a custom length")
+	}
+}
+
+func TestTypedLengthOutsideTheRulesExplainsItself(t *testing.T) {
+	h := newHarness(t)
+	member := h.login("husets-losenord")
+	day := h.date(1)
+
+	cases := map[string]string{
+		"0,25": "Kortaste", // under min_duration_minutes
+		"12":   "Längsta",  // over max_duration_minutes
+		"1,1":  "jämnt ut", // off the 30 minute grid
+		"abc":  "inte ett tal",
+	}
+	for value, want := range cases {
+		body := h.do("GET", "/resurs/ellastcykel?datum="+day+"&langd="+url.QueryEscape(value), nil, member).Body.String()
+		if !strings.Contains(body, want) {
+			t.Errorf("langd=%q should explain %q", value, want)
+		}
+		// A bad length must not take the page down or lose the slot list.
+		if !strings.Contains(body, "Lediga starttider") {
+			t.Errorf("langd=%q broke the page", value)
+		}
+	}
+}
+
+func TestBookingWithATypedLength(t *testing.T) {
+	h := newHarness(t)
+	member := h.login("husets-losenord")
+
+	form := url.Values{
+		"datum": {h.date(1)}, "start": {"10:00"}, "langd": {"3.5"},
+		"name": {"Anna Andersson"}, "email": {"anna@example.se"},
+	}
+	rec := h.do("POST", "/resurs/ellastcykel/boka", form, member)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("booking = %d, want a redirect. Body:\n%s", rec.Code, rec.Body.String())
+	}
+	confirm := h.do("GET", rec.Header().Get("Location"), nil, member).Body.String()
+	if !strings.Contains(confirm, "3 h 30 min") {
+		t.Error("the confirmation should show a three and a half hour booking")
+	}
+	if !strings.Contains(confirm, "10:00") || !strings.Contains(confirm, "13:30") {
+		t.Error("the confirmation should run 10:00 to 13:30")
+	}
+}
+
+func TestTypedLengthIsRefusedWhereNotAllowed(t *testing.T) {
+	h := newHarness(t)
+	member := h.login("husets-losenord")
+
+	form := url.Values{
+		"datum": {h.date(1)}, "start": {"10:00"}, "langd": {"3"},
+		"name": {"Anna"}, "email": {"anna@example.se"},
+	}
+	rec := h.do("POST", "/resurs/elcykel/boka", form, member)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "tillåtna längderna") {
+		t.Error("the page should list the allowed lengths")
+	}
+}
+
+// --- Upcoming bookings page -------------------------------------------------
+
+func TestUpcomingListsBookingsInOrderFromNow(t *testing.T) {
+	h := newHarness(t)
+	member := h.login("husets-losenord")
+
+	// Two bookings tomorrow, one the day after, and one that has already
+	// finished. Created out of order on purpose.
+	seed := []struct {
+		day, start string
+		hours      string
+		who        string
+	}{
+		{h.date(2), "09:00", "2", "Cecilia Dahl"},
+		{h.date(1), "16:00", "1", "Bo Bengtsson"},
+		{h.date(1), "08:00", "2", "Anna Andersson"},
+	}
+	for _, b := range seed {
+		form := url.Values{
+			"datum": {b.day}, "start": {b.start}, "langd": {b.hours},
+			"name": {b.who}, "email": {strings.ToLower(strings.Split(b.who, " ")[0]) + "@example.com"},
+		}
+		if rec := h.do("POST", "/resurs/ellastcykel/boka", form, member); rec.Code != http.StatusSeeOther {
+			t.Fatalf("seed %s: %d\n%s", b.who, rec.Code, rec.Body.String())
+		}
+	}
+	// A booking that finished before "now".
+	past := storeBooking(h, h.now.AddDate(0, 0, -2), 10, 2)
+	past.Name = "Gammal Bokning"
+	if err := h.store.Create(context.Background(), past, past.Start, past.End); err != nil {
+		t.Fatalf("seed past: %v", err)
+	}
+
+	body := h.do("GET", "/resurs/ellastcykel/bokningar", nil, member).Body.String()
+
+	if strings.Contains(body, "Gammal Bokning") {
+		t.Error("bookings that already finished must not be listed")
+	}
+	for _, who := range []string{"Anna Andersson", "Bo Bengtsson", "Cecilia Dahl"} {
+		if !strings.Contains(body, who) {
+			t.Errorf("%s is missing from the upcoming list", who)
+		}
+	}
+
+	// Chronological: Anna 08:00, then Bo 16:00, then Cecilia the next day.
+	iAnna := strings.Index(body, "Anna Andersson")
+	iBo := strings.Index(body, "Bo Bengtsson")
+	iCecilia := strings.Index(body, "Cecilia Dahl")
+	if !(iAnna < iBo && iBo < iCecilia) {
+		t.Errorf("out of order: Anna at %d, Bo at %d, Cecilia at %d", iAnna, iBo, iCecilia)
+	}
+
+	if !strings.Contains(body, "3 bokningar") {
+		t.Error("the heading should count the upcoming bookings")
+	}
+}
+
+func TestUpcomingGroupsByDayAndShowsGuestRoomNights(t *testing.T) {
+	h := newHarness(t)
+	member := h.login("husets-losenord")
+
+	form := url.Values{
+		"fran": {h.date(5)}, "till": {h.date(8)},
+		"name": {"Anna Andersson"}, "email": {"anna@example.se"},
+	}
+	if rec := h.do("POST", "/resurs/gastrum-1/boka", form, member); rec.Code != http.StatusSeeOther {
+		t.Fatalf("seed: %d", rec.Code)
+	}
+
+	body := h.do("GET", "/resurs/gastrum-1/bokningar", nil, member).Body.String()
+	if !strings.Contains(body, "3 nätter") {
+		t.Error("a guest room stay should be shown in nights")
+	}
+	if !strings.Contains(body, "agenda-day") {
+		t.Error("bookings should be grouped by day")
+	}
+}
+
+func TestUpcomingIsEmptyAndFriendlyWithNoBookings(t *testing.T) {
+	h := newHarness(t)
+	member := h.login("husets-losenord")
+
+	body := h.do("GET", "/resurs/ellastcykel/bokningar", nil, member).Body.String()
+	if !strings.Contains(body, "Inget är bokat än") {
+		t.Error("an empty resource should say so plainly")
+	}
+}
+
+func TestUpcomingNeedsALoginAndARealResource(t *testing.T) {
+	h := newHarness(t)
+	if rec := h.do("GET", "/resurs/ellastcykel/bokningar", nil, nil); rec.Code != http.StatusSeeOther {
+		t.Errorf("logged out = %d, want a redirect to /login", rec.Code)
+	}
+	member := h.login("husets-losenord")
+	if rec := h.do("GET", "/resurs/finns-inte/bokningar", nil, member); rec.Code != http.StatusNotFound {
+		t.Errorf("unknown resource = %d, want 404", rec.Code)
+	}
+}
+
+func TestResourcePageLinksToUpcoming(t *testing.T) {
+	h := newHarness(t)
+	member := h.login("husets-losenord")
+	for _, path := range []string{"/", "/resurs/ellastcykel", "/resurs/gastrum-1"} {
+		body := h.do("GET", path, nil, member).Body.String()
+		if !strings.Contains(body, "/resurs/ellastcykel/bokningar") &&
+			!strings.Contains(body, "/resurs/gastrum-1/bokningar") {
+			t.Errorf("%s should link to the upcoming bookings page", path)
+		}
 	}
 }

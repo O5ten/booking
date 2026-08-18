@@ -23,6 +23,9 @@ type resourceCard struct {
 type ruleSummary struct {
 	Mode      config.Mode
 	Durations string
+	// Custom is the span of a typed-in length, e.g. "30 min – 10 h". Empty
+	// when the resource only offers the preset lengths.
+	Custom    string
 	Window    string
 	Buffer    string
 	Advance   string
@@ -38,6 +41,10 @@ func summarize(r config.Resource) ruleSummary {
 	case config.ModeHours:
 		s.Durations = booking.DurationList(ru.Durations)
 		s.Window = ru.OpenFrom + "–" + ru.OpenTo
+		if ru.CustomDuration {
+			s.Custom = booking.FormatDuration(time.Duration(ru.MinDurationMinutes)*time.Minute) +
+				" – " + booking.FormatDuration(time.Duration(ru.MaxDurationMinutes)*time.Minute)
+		}
 	case config.ModeDays:
 		s.Nights = Nights(ru.MinDays) + " – " + Nights(ru.MaxDays)
 		s.CheckTime = "in " + ru.CheckIn + ", ut " + ru.CheckOut

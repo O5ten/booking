@@ -40,7 +40,12 @@ resources:
     info_url: https://rudbeckia.nu/huset/cykelrummet/
     booking:
       mode: hours
+      # Snabbvalen som visas som knappar.
       durations: [1, 2, 4, 8]
+      # Låter den som bokar skriva in en egen längd i stället, t.ex. 1,5 eller 6.
+      custom_duration: true
+      min_duration_minutes: 30
+      max_duration_minutes: 600
       slot_step_minutes: 30
       buffer_minutes: 15
       open_from: "06:00"
@@ -63,6 +68,9 @@ resources:
     booking:
       mode: hours
       durations: [1, 2, 4, 8]
+      custom_duration: true
+      min_duration_minutes: 30
+      max_duration_minutes: 600
       slot_step_minutes: 30
       buffer_minutes: 15
       open_from: "06:00"
