@@ -647,3 +647,6 @@ label { font-size: .85rem; }
 /* The times dim briefly while a new length is being fetched. */
 #slot-area { transition: opacity .12s ease-out; }
 #slot-area.is-loading { opacity: .45; }
+
+.head-links { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+.group-desc a { text-decoration-thickness: 1px; text-underline-offset: .18em; }

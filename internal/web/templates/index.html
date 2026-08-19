@@ -27,7 +27,12 @@
 {{range .Data.Groups}}
 <section class="group">
 	<h2 class="group-title">{{with .Category.Emoji}}<span aria-hidden="true">{{.}}</span> {{end}}{{.Category.Name}}</h2>
-	{{with .Category.Description}}<p class="muted group-desc">{{.}}</p>{{end}}
+	{{if or .Category.Description .Category.Link}}
+	<p class="muted group-desc">
+		{{.Category.Description}}
+		{{if .Category.Link}}<a href="{{.Category.Link}}" target="_blank" rel="noopener">{{.Category.LinkLabel}}</a>{{end}}
+	</p>
+	{{end}}
 	<div class="cards">
 		{{range .Resources}}
 		<article class="card">

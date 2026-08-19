@@ -17,6 +17,8 @@ categories:
     name: Cyklar
     emoji: 🚲
     description: Husets gemensamma cyklar. Ladda gärna batteriet efter din tur.
+    link: https://chat.rudbeckia.nu/rudbeckia/channels/cykelpoolen
+    link_text: "#cykelpoolen i Mattermost"
   - id: gastrum
     name: Gästrum
     emoji: 🛏️
@@ -35,9 +37,10 @@ resources:
     description: Elektrisk lastcykel med plats för barn eller storhandling.
     location: Cykelrummet på markplan
     instructions: >-
-      Nyckeln sitter i nyckelskåpet vid torget. Ställ tillbaka cykeln i
-      cykelrummet på markplan och sätt den på laddning när du är klar, och
-      meddela i Mattermost om något gått sönder.
+      Nycklarna hänger på hyllan i städrummet intill hissen, tillsammans med
+      batterierna. Ställ tillbaka cykeln i cykelrummet på markplan när du är
+      klar, och lägg tillbaka nyckeln och batteriet på laddning i städrummet.
+      Meddela i #cykelpoolen i Mattermost om något gått sönder.
     info_url: https://rudbeckia.nu/huset/cykelrummet/
     booking:
       mode: hours
@@ -64,8 +67,10 @@ resources:
     description: Vanlig elcykel för snabba ärenden och pendling.
     location: Cykelrummet på markplan
     instructions: >-
-      Nyckeln sitter i nyckelskåpet vid torget. Ställ tillbaka cykeln i
-      cykelrummet på markplan och sätt den på laddning när du är klar.
+      Nycklarna hänger på hyllan i städrummet intill hissen, tillsammans med
+      batterierna. Ställ tillbaka cykeln i cykelrummet på markplan när du är
+      klar, och lägg tillbaka nyckeln och batteriet på laddning i städrummet.
+      Meddela i #cykelpoolen i Mattermost om något gått sönder.
     info_url: https://rudbeckia.nu/huset/cykelrummet/
     booking:
       mode: hours

@@ -51,6 +51,18 @@ type Category struct {
 	Name        string `yaml:"name"`
 	Description string `yaml:"description"`
 	Emoji       string `yaml:"emoji"`
+	// Link and LinkText point somewhere the group belongs, typically the
+	// Mattermost channel where the house talks about these things.
+	Link     string `yaml:"link"`
+	LinkText string `yaml:"link_text"`
+}
+
+// LinkLabel is the text to show for Link, falling back to the bare address.
+func (c Category) LinkLabel() string {
+	if c.LinkText != "" {
+		return c.LinkText
+	}
+	return c.Link
 }
 
 // Resource is one bookable thing: a bike, a room, a workshop.

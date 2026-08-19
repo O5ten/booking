@@ -26,6 +26,9 @@ site:
 categories:
   - id: cyklar
     name: Cyklar
+    description: Husets gemensamma cyklar.
+    link: https://chat.example.com/channels/cykelpoolen
+    link_text: "#cykelpoolen"
   - id: gastrum
     name: Gästrum
 resources:
@@ -33,6 +36,7 @@ resources:
     category: cyklar
     name: Ellastcykeln
     location: Cykelrummet
+    info_url: https://example.com/huset/cykelrummet/
     booking:
       mode: hours
       durations: [1, 2, 4, 8]
@@ -906,5 +910,31 @@ func TestCustomLengthWorksAsAPlainFormSubmit(t *testing.T) {
 	}
 	if !strings.Contains(body, `class="button primary small"`) {
 		t.Error("the submit button must be in the HTML for people without JavaScript")
+	}
+}
+
+// A category can link to the Mattermost channel where the house talks about
+// that kind of thing, and a resource can link to its page on rudbeckia.nu.
+// Both are config that used to be declared and never rendered.
+func TestCategoryAndResourceLinksAreRendered(t *testing.T) {
+	h := newHarness(t)
+	member := h.login("husets-losenord")
+
+	start := h.do("GET", "/", nil, member).Body.String()
+	if !strings.Contains(start, `href="https://chat.example.com/channels/cykelpoolen"`) {
+		t.Error("the category link is missing from the start page")
+	}
+	if !strings.Contains(start, "#cykelpoolen") {
+		t.Error("the category link should use its configured text")
+	}
+
+	page := h.do("GET", "/resurs/ellastcykel", nil, member).Body.String()
+	if !strings.Contains(page, `href="https://example.com/huset/cykelrummet/"`) {
+		t.Error("info_url is not rendered on the resource page")
+	}
+
+	// A category without a link must not render an empty anchor.
+	if strings.Contains(start, `href=""`) {
+		t.Error("a category with no link produced an empty href")
 	}
 }

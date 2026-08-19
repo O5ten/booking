@@ -81,6 +81,21 @@ containern när du ändrat något. Kontrollera först att filen är giltig:
 docker compose run --rm booking -check-config
 ```
 
+### Kategorier
+
+Kategorier grupperar resurserna på startsidan och kan peka på den kanal där
+huset pratar om just de sakerna:
+
+```yaml
+categories:
+  - id: cyklar
+    name: Cyklar
+    emoji: 🚲
+    description: Husets gemensamma cyklar. Ladda gärna batteriet efter din tur.
+    link: https://chat.rudbeckia.nu/rudbeckia/channels/cykelpoolen
+    link_text: "#cykelpoolen i Mattermost"
+```
+
 ### Två sorters resurser
 
 **`mode: hours`** – saker man lånar en stund, som cyklar. Medlemmen väljer dag,
@@ -93,7 +108,8 @@ längd och starttid ur ett rutnät.
   emoji: 🚲
   description: Elektrisk lastcykel med plats för barn eller storhandling.
   location: Cykelrummet i källaren
-  instructions: Nyckeln sitter i nyckelskåpet vid torget.
+  instructions: Nycklarna hänger i städrummet intill hissen.
+  info_url: https://rudbeckia.nu/huset/cykelrummet/   # "Läs mer"-länk
   booking:
     mode: hours
     durations: [1, 2, 4, 8]        # snabbvalen som visas som knappar

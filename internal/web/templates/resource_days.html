@@ -15,6 +15,9 @@
 	{{with $res.Instructions}}<p class="note">{{.}}</p>{{end}}
 	<p class="head-links">
 		<a class="quiet-link" href="/resurs/{{$res.ID}}/bokningar">Se alla kommande bokningar →</a>
+		{{with $res.InfoURL}}
+		<a class="quiet-link" href="{{.}}" target="_blank" rel="noopener">Läs mer på rudbeckia.nu →</a>
+		{{end}}
 	</p>
 </header>
 
