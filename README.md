@@ -1,4 +1,4 @@
-# booking.rudbeckia.nu
+# booking
 
 Bokningssystem för Kollektivhuset Rudbeckia. Husets medlemmar bokar cyklar,
 gästrum och lokaler bakom ett gemensamt lösenord, får en bekräftelse på mejlen
