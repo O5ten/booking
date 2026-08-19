@@ -150,7 +150,7 @@ in- och utcheckningsdatum i en månadskalender.
     max_days: 7
     check_in: "15:00"
     check_out: "12:00"
-    max_advance_days: 180
+    max_advance_days: 90
     max_active_per_user: 2
 ```
 

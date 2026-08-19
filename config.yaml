@@ -104,7 +104,7 @@ resources:
       max_days: 7
       check_in: "15:00"
       check_out: "12:00"
-      max_advance_days: 180
+      max_advance_days: 90
       max_active_per_user: 2
 
   - id: gastrum-2
@@ -123,7 +123,7 @@ resources:
       max_days: 7
       check_in: "15:00"
       check_out: "12:00"
-      max_advance_days: 180
+      max_advance_days: 90
       max_active_per_user: 2
 
   - id: overnattningsrum
@@ -138,7 +138,7 @@ resources:
       max_days: 4
       check_in: "15:00"
       check_out: "12:00"
-      max_advance_days: 120
+      max_advance_days: 90
       max_active_per_user: 1
 
   # --------------------------------------------------------------- Lokaler --
