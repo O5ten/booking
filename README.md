@@ -367,7 +367,7 @@ varande databas — eller stoppa containern först.
 go test ./...                        # alla tester
 go test -race ./...                  # med kapplöpningsdetektor
 go vet ./...
-node --test internal/web/static/     # sökningen i webbläsaren (make test-js)
+make test-js                         # sökningen i webbläsaren (kräver Node)
 BOOKING_PASSWORD=hemligt ADMIN_PASSWORD=admin go run ./cmd/server
 ```
 

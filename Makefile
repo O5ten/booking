@@ -27,9 +27,11 @@ run: ## Run against your own config.yaml (set BOOKING_PASSWORD first)
 test: ## Run the tests
 	go test ./...
 
+# The files are listed by the shell rather than handed to Node as a directory:
+# Node 22 stopped searching directories given to --test and tries to run them.
 test-js: ## Run the browser-side tests (needs Node; skipped if missing)
 	@if command -v node >/dev/null 2>&1; then \
-		node --test internal/web/static/; \
+		node --test internal/web/static/*_test.mjs; \
 	else \
 		echo "node is not installed — skipping the browser-side tests"; \
 	fi
