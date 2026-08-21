@@ -6,10 +6,11 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="color-scheme" content="light dark">
 <title>{{if .Title}}{{.Title}} · {{end}}{{.Site.Title}}</title>
-<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="{{asset "app.css"}}">
 <link rel="icon" href="/static/rudbeckia.png" type="image/png">
 <link rel="apple-touch-icon" href="/static/rudbeckia.png">
-<script src="/static/app.js" defer></script>
+<script src="{{asset "members.js"}}" defer></script>
+<script src="{{asset "app.js"}}" defer></script>
 </head>
 <body>
 <a class="skip" href="#main">Hoppa till innehållet</a>
@@ -61,7 +62,7 @@
 	<div class="footer-inner">
 		<p>{{if .Site.FooterNote}}{{.Site.FooterNote}}{{else}}{{.Site.Title}}{{end}}</p>
 		<p class="muted">
-			{{if not .MailOn}}<span class="warn-dot" title="SMTP är inte konfigurerat">●</span> Utan e-postutskick · {{end}}
+			{{if not .BotOn}}<span class="warn-dot" title="Mattermost är inte konfigurerat">●</span> Utan Mattermost-utskick · {{end}}
 			{{if .Site.SupportURL}}<a href="{{.Site.SupportURL}}">Frågor?</a>{{end}}
 		</p>
 	</div>

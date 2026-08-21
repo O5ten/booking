@@ -111,7 +111,8 @@ func TestClearRemovesTheSession(t *testing.T) {
 
 func TestIdentityRoundTripAndTamper(t *testing.T) {
 	g := guard()
-	want := Identity{Name: "Anna Andersson", Apartment: "1403", Email: "anna@example.se", Phone: "070-1234567"}
+	want := Identity{Name: "Anna Andersson", Apartment: "1403",
+		MMUsername: "anna.andersson", MMUserID: "e3pn8o34qpb3if7z49gxum59oy", Phone: "070-1234567"}
 
 	rec := httptest.NewRecorder()
 	g.RememberIdentity(rec, want)

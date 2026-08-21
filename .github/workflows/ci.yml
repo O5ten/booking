@@ -36,6 +36,11 @@ jobs:
       - name: Test
         run: go test -race -count=1 ./...
 
+      # The user picker searches in the browser, so its index has its own
+      # tests. Node is preinstalled on the runner; there is nothing to build.
+      - name: Test the browser-side search
+        run: node --test internal/web/static/
+
       - name: Validate the bundled configuration
         run: go run ./cmd/server -check-config
         env:

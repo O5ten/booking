@@ -164,8 +164,8 @@ func TestSeededBookingsAreValid(t *testing.T) {
 		if b.Start.After(now.AddDate(0, 0, res.Rules.MaxAdvanceDays)) {
 			t.Errorf("%s is beyond the booking horizon", b.ID)
 		}
-		if b.Name == "" || b.Email == "" {
-			t.Errorf("%s has no name or e-mail", b.ID)
+		if b.Name == "" || b.MMUsername == "" {
+			t.Errorf("%s has no name or Mattermost account", b.ID)
 		}
 		if res.Rules.Mode == config.ModeHours {
 			openFrom, _ := config.ParseClock(res.Rules.OpenFrom)
@@ -190,16 +190,20 @@ func TestSeededBookingsAreValid(t *testing.T) {
 	}
 }
 
-// Nothing in the demo data may look like a real person's address.
-func TestSeedUsesReservedExampleAddresses(t *testing.T) {
+// Demo bookings must carry no way of reaching anyone: no e-mail address, and
+// no Mattermost account id for the bot to send a message to.
+func TestSeedCannotReachAnyone(t *testing.T) {
 	st, cfg, now := setup(t)
 	if _, err := Seed(context.Background(), st, cfg, now); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	all, _ := st.Search(context.Background(), store.Filter{})
 	for _, b := range all {
-		if got := b.Email; len(got) < 12 || got[len(got)-12:] != "@example.com" {
-			t.Errorf("%s uses %q, which is not a reserved example address", b.ID, got)
+		if b.Email != "" {
+			t.Errorf("%s carries the address %q; demo data must reach nobody", b.ID, b.Email)
+		}
+		if b.MMUserID != "" {
+			t.Errorf("%s carries the Mattermost id %q; demo data must reach nobody", b.ID, b.MMUserID)
 		}
 	}
 }

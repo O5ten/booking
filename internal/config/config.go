@@ -119,7 +119,7 @@ type Rules struct {
 	MaxAdvanceDays int `yaml:"max_advance_days"`
 	// MinNoticeMinutes blocks bookings starting too soon from now.
 	MinNoticeMinutes int `yaml:"min_notice_minutes"`
-	// MaxActivePerUser caps simultaneous upcoming bookings per e-mail. 0 = no cap.
+	// MaxActivePerUser caps simultaneous upcoming bookings per member. 0 = no cap.
 	MaxActivePerUser int `yaml:"max_active_per_user"`
 	// MaxHoursPerWeekPerUser caps booked hours in a rolling week. 0 = no cap.
 	MaxHoursPerWeekPerUser float64 `yaml:"max_hours_per_week_per_user"`
@@ -138,28 +138,47 @@ type Runtime struct {
 	AdminPassword string
 	SessionSecret []byte
 	SessionMaxAge time.Duration
-	Mail          MailSettings
+	Mattermost    MattermostSettings
 	TrustProxy    bool
 	// Demo fills in throwaway passwords, seeds example bookings and shows a
 	// banner saying so. Never enable it on a real deployment.
 	Demo bool
 }
 
-// MailSettings configures outgoing notification mail.
-type MailSettings struct {
-	Host       string
-	Port       int
-	Username   string
-	Password   string
-	From       string
-	FromName   string
-	Encryption string // "starttls", "tls" or "none"
-	ReplyTo    string
-	BCC        string
+// MattermostSettings configures the bot that notifies members and answers the
+// booking form's user lookups.
+type MattermostSettings struct {
+	// URL is the Mattermost server, e.g. "https://chat.rudbeckia.nu".
+	URL string
+	// Token is the bot account's personal access token.
+	Token string
+	// Allow lists the usernames that may book at all. Empty means everyone in
+	// the directory may book, which is where the house will end up; a short
+	// list is how a rollout starts.
+	Allow []string
 }
 
-// Enabled reports whether mail can actually be delivered.
-func (m MailSettings) Enabled() bool { return m.Host != "" && m.From != "" }
+// Enabled reports whether the bot can really reach Mattermost.
+func (m MattermostSettings) Enabled() bool { return m.URL != "" && m.Token != "" }
+
+// Allowed reports whether a Mattermost username may make bookings. With no
+// allow list everyone may.
+func (m MattermostSettings) Allowed(username string) bool {
+	if len(m.Allow) == 0 {
+		return true
+	}
+	username = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(username), "@")))
+	for _, a := range m.Allow {
+		if strings.ToLower(a) == username {
+			return true
+		}
+	}
+	return false
+}
+
+// AllowList is the allowed usernames as a readable list, for the pages and
+// messages that have to explain the restriction.
+func (m MattermostSettings) AllowList() string { return strings.Join(m.Allow, ", ") }
 
 // Load reads and validates the YAML configuration at path.
 func Load(path string) (*Config, error) {

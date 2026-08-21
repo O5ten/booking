@@ -100,8 +100,8 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request, v *view) {
 	}
 
 	var mine []bookingRow
-	if v.Ident.Email != "" {
-		list, err := s.store.ByEmail(r.Context(), v.Ident.Email, false, now)
+	if v.Ident.MMUsername != "" {
+		list, err := s.store.ByMember(r.Context(), v.Ident.MMUsername, false, now)
 		if err != nil {
 			s.log.Error("load own bookings", "err", err)
 		} else {

@@ -3,7 +3,6 @@
 package booking
 
 import (
-	"strings"
 	"time"
 
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/config"
@@ -79,8 +78,9 @@ func blocked(start, end time.Time, buffer time.Duration, existing []store.Bookin
 
 // BuildDay computes the slot grid and timeline for one day and one duration.
 // existing must contain the resource's confirmed bookings overlapping that day
-// (plus a little margin so buffers on either side are seen).
-func BuildDay(r config.Resource, day time.Time, dur time.Duration, existing []store.Booking, now time.Time, loc *time.Location, myEmail string) DayView {
+// (plus a little margin so buffers on either side are seen). me is the viewing
+// member's Mattermost username, so their own bookings can be marked as theirs.
+func BuildDay(r config.Resource, day time.Time, dur time.Duration, existing []store.Booking, now time.Time, loc *time.Location, me string) DayView {
 	openFrom, openTo := dayWindow(r, day, loc)
 	buffer := time.Duration(r.Rules.BufferMinutes) * time.Minute
 	step := time.Duration(r.Rules.SlotStepMinutes) * time.Minute
@@ -100,7 +100,7 @@ func BuildDay(r config.Resource, day time.Time, dur time.Duration, existing []st
 		default:
 			if b, hit := blocked(s, e, buffer, existing); hit {
 				slot.Available = false
-				if b.Email != "" && myEmail != "" && strings.EqualFold(b.Email, myEmail) {
+				if b.MMUsername != "" && me != "" && store.Member(b.MMUsername) == store.Member(me) {
 					slot.Reason = "Din bokning"
 				} else {
 					slot.Reason = "Upptagen"
@@ -138,7 +138,7 @@ func BuildDay(r config.Resource, day time.Time, dur time.Duration, existing []st
 			Booking:   b,
 			OffsetPct: s.Sub(openFrom).Seconds() / total * 100,
 			WidthPct:  e.Sub(s).Seconds() / total * 100,
-			Mine:      myEmail != "" && strings.EqualFold(b.Email, myEmail),
+			Mine:      me != "" && store.Member(b.MMUsername) == store.Member(me),
 		})
 	}
 	return view
@@ -160,8 +160,9 @@ type DayCell struct {
 func (c DayCell) Taken() bool { return c.Booking != nil }
 
 // MonthGrid builds a Monday-first calendar grid for the month containing anchor.
-// A day counts as taken if any confirmed booking covers its night.
-func MonthGrid(r config.Resource, anchor time.Time, existing []store.Booking, now time.Time, loc *time.Location, myEmail string) []DayCell {
+// A day counts as taken if any confirmed booking covers its night. me is the
+// viewing member's Mattermost username.
+func MonthGrid(r config.Resource, anchor time.Time, existing []store.Booking, now time.Time, loc *time.Location, me string) []DayCell {
 	first := time.Date(anchor.Year(), anchor.Month(), 1, 0, 0, 0, 0, loc)
 	// Monday = 0.
 	lead := (int(first.Weekday()) + 6) % 7
@@ -194,7 +195,7 @@ func MonthGrid(r config.Resource, anchor time.Time, existing []store.Booking, no
 			if !d.Before(first) && d.Before(last) {
 				cell.Available = false
 				cell.Booking = &existing[j]
-				cell.Mine = myEmail != "" && strings.EqualFold(b.Email, myEmail)
+				cell.Mine = me != "" && store.Member(b.MMUsername) == store.Member(me)
 				break
 			}
 		}

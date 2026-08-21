@@ -80,7 +80,7 @@ func TestBuildDayRespectsBuffer(t *testing.T) {
 		Start:      at(loc, "2026-05-02 10:00"),
 		End:        at(loc, "2026-05-02 14:00"),
 		Status:     store.StatusConfirmed,
-		Email:      "anna@example.se",
+		MMUsername: "anna.andersson",
 	}}
 
 	view := BuildDay(bike(), day, time.Hour, existing, now, loc, "")
@@ -108,12 +108,12 @@ func TestBuildDayMarksOwnBooking(t *testing.T) {
 	loc := stockholm(t)
 	now := at(loc, "2026-05-01 08:00")
 	existing := []store.Booking{{
-		Start:  at(loc, "2026-05-02 10:00"),
-		End:    at(loc, "2026-05-02 12:00"),
-		Status: store.StatusConfirmed,
-		Email:  "Anna@Example.se",
+		Start:      at(loc, "2026-05-02 10:00"),
+		End:        at(loc, "2026-05-02 12:00"),
+		Status:     store.StatusConfirmed,
+		MMUsername: "Anna.Andersson",
 	}}
-	view := BuildDay(bike(), at(loc, "2026-05-02 00:00"), time.Hour, existing, now, loc, "anna@example.se")
+	view := BuildDay(bike(), at(loc, "2026-05-02 00:00"), time.Hour, existing, now, loc, "anna.andersson")
 	for _, s := range view.Slots {
 		if clockOf(s.Start.In(loc)) == "10:00" && s.Reason != "Din bokning" {
 			t.Errorf("own booking reason = %q, want %q (case-insensitive match)", s.Reason, "Din bokning")
@@ -166,13 +166,13 @@ func TestMonthGridMarksEveryBookedNight(t *testing.T) {
 	now := at(loc, "2026-05-01 09:00")
 	// Check in on the 10th, out on the 13th: the nights of 10, 11 and 12.
 	existing := []store.Booking{{
-		Start:  at(loc, "2026-05-10 15:00"),
-		End:    at(loc, "2026-05-13 12:00"),
-		Status: store.StatusConfirmed,
-		Email:  "anna@example.se",
+		Start:      at(loc, "2026-05-10 15:00"),
+		End:        at(loc, "2026-05-13 12:00"),
+		Status:     store.StatusConfirmed,
+		MMUsername: "anna.andersson",
 	}}
 
-	cells := MonthGrid(room(), at(loc, "2026-05-01 00:00"), existing, now, loc, "anna@example.se")
+	cells := MonthGrid(room(), at(loc, "2026-05-01 00:00"), existing, now, loc, "anna.andersson")
 
 	taken := map[string]bool{}
 	for _, c := range cells {

@@ -1,7 +1,7 @@
 # Everyday commands. Run `make` on its own to see them.
 
 .DEFAULT_GOAL := help
-.PHONY: help demo demo-docker demo-stop run test race vet fmt check build image clean
+.PHONY: help demo demo-docker demo-stop run test test-js race vet fmt check build image clean
 
 BINARY  := booking
 IMAGE   := booking-rudbeckia
@@ -13,8 +13,7 @@ help: ## Show this help
 
 demo: ## Try the site out: example bookings, password "demo", needs only Go
 	@echo "→ http://localhost:8080   password: demo   admin: admin"
-	@DB_PATH=$${DB_PATH:-data/demo.db} go run ./cmd/server -demo
-
+	@DB_PATH=$${DB_PATH:-data/demo.db} go run ./cmd/server -demo  
 demo-docker: ## Same, but in a container, with nothing installed but Docker
 	@echo "→ http://localhost:8080   password: demo   admin: admin"
 	@$(COMPOSE) up --build
@@ -28,6 +27,13 @@ run: ## Run against your own config.yaml (set BOOKING_PASSWORD first)
 test: ## Run the tests
 	go test ./...
 
+test-js: ## Run the browser-side tests (needs Node; skipped if missing)
+	@if command -v node >/dev/null 2>&1; then \
+		node --test internal/web/static/; \
+	else \
+		echo "node is not installed — skipping the browser-side tests"; \
+	fi
+
 race: ## Run the tests with the race detector
 	go test -race -count=1 ./...
 
@@ -37,7 +43,7 @@ vet: ## Static checks
 fmt: ## Format every Go file
 	gofmt -w .
 
-check: fmt vet race ## Format, vet and test — run this before pushing
+check: fmt vet race test-js ## Format, vet and test — run this before pushing
 	@go run ./cmd/server -check-config
 
 build: ## Build the binary into ./booking

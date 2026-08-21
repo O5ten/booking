@@ -150,7 +150,7 @@ func (s *Server) handleAdminCSV(w http.ResponseWriter, r *http.Request, v *view)
 	cw.Comma = ';'
 	defer cw.Flush()
 	cw.Write([]string{"id", "resurs", "start", "slut", "timmar", "namn", "lagenhet",
-		"epost", "telefon", "meddelande", "status", "skapad"})
+		"mattermost", "epost", "telefon", "meddelande", "status", "skapad"})
 	for _, b := range list {
 		res, ok := s.cfg.Resource(b.ResourceID)
 		name := b.ResourceID
@@ -162,7 +162,7 @@ func (s *Server) handleAdminCSV(w http.ResponseWriter, r *http.Request, v *view)
 			b.Start.In(loc).Format("2006-01-02 15:04"),
 			b.End.In(loc).Format("2006-01-02 15:04"),
 			strconv.FormatFloat(b.End.Sub(b.Start).Hours(), 'f', 2, 64),
-			b.Name, b.Apartment, b.Email, b.Phone, b.Note, string(b.Status),
+			b.Name, b.Apartment, b.MMUsername, b.Email, b.Phone, b.Note, string(b.Status),
 			b.CreatedAt.In(loc).Format("2006-01-02 15:04"),
 		})
 	}

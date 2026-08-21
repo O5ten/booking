@@ -18,20 +18,21 @@ import (
 type resident struct {
 	Name      string
 	Apartment string
-	Email     string
+	Username  string
 }
 
-// The cast is fictional, and the addresses use the reserved example.com domain
-// so nothing can accidentally be mailed to a real person.
+// The cast is fictional and the accounts exist nowhere: demo mode never
+// connects to Mattermost, so no message can reach a real person. The bookings
+// carry no Mattermost id at all, which is what "no chat server" looks like.
 var residents = []resident{
-	{"Anna Andersson", "1403", "anna@example.com"},
-	{"Bo Bengtsson", "0702", "bo@example.com"},
-	{"Cecilia Dahl", "1201", "cecilia@example.com"},
-	{"David Ek", "0304", "david@example.com"},
-	{"Elin Forsberg", "0508", "elin@example.com"},
-	{"Farid Hassan", "1105", "farid@example.com"},
-	{"Greta Lind", "0601", "greta@example.com"},
-	{"Hugo Nyström", "0907", "hugo@example.com"},
+	{"Anna Andersson", "1403", "anna.andersson"},
+	{"Bo Bengtsson", "0702", "bo.bengtsson"},
+	{"Cecilia Dahl", "1201", "cecilia.dahl"},
+	{"David Ek", "0304", "david.ek"},
+	{"Elin Forsberg", "0508", "elin.forsberg"},
+	{"Farid Hassan", "1105", "farid.hassan"},
+	{"Greta Lind", "0601", "greta.lind"},
+	{"Hugo Nyström", "0907", "hugo.nystrom"},
 }
 
 var bikeNotes = []string{
@@ -177,7 +178,7 @@ func newBooking(res config.Resource, who resident, start, end time.Time, note st
 		Mode:        string(res.Rules.Mode),
 		Name:        who.Name,
 		Apartment:   who.Apartment,
-		Email:       who.Email,
+		MMUsername:  who.Username,
 		Note:        note,
 		Status:      store.StatusConfirmed,
 		CancelToken: demoID("token-"+res.ID, start),

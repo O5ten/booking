@@ -3,13 +3,23 @@
 	<h1>Mina bokningar</h1>
 	{{if .Data.Cancelled}}<p class="alert alert-ok">Bokningen är avbokad.</p>{{end}}
 
-	{{if not .Data.Email}}
-	<p class="muted">Vi känner igen dig på din e-postadress. Skriv in den så visar vi dina bokningar.</p>
+	{{with .Data.Error}}<p class="alert alert-error" role="alert">{{.}}</p>{{end}}
+	{{if not .Data.Member}}
+	<p class="muted">Vi känner igen dig på ditt Mattermost-konto. Sök på namn eller
+		användarnamn så visar vi bokningarna.</p>
 	{{end}}
 	<form method="get" action="/mina" class="range-form">
 		<div class="field">
-			<label for="epost">E-postadress</label>
-			<input id="epost" name="epost" type="email" value="{{.Data.Email}}" placeholder="anna@example.se" required>
+			<label for="medlem">Vems bokningar?</label>
+			<div class="member-field">
+				<span class="member-at" aria-hidden="true">@</span>
+				<input id="medlem" name="medlem" type="text" value="{{.Data.Typed}}"
+				       placeholder="Anna Andersson eller anna.andersson" autocomplete="off"
+				       spellcheck="false" autocapitalize="none" aria-controls="mina-lista"
+				       data-member-search required>
+				<ul class="combo-list" id="mina-lista" role="listbox"
+				    aria-label="Personer i huset" hidden></ul>
+			</div>
 		</div>
 		<button type="submit" class="button">Visa</button>
 	</form>
@@ -27,8 +37,9 @@
 		</li>
 		{{end}}
 	</ul>
-	{{else if .Data.Email}}
-	<p class="empty">Inga bokningar på {{.Data.Email}} just nu. <a href="/">Boka något</a>?</p>
+	{{else if .Data.Member}}
+	<p class="empty">Inga bokningar för {{with .Data.Name}}{{.}} (@{{$.Data.Member}}){{else}}@{{.Data.Member}}{{end}}
+		just nu. <a href="/">Boka något</a>?</p>
 	{{end}}
 </div>
 {{end}}

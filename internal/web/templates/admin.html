@@ -82,7 +82,9 @@
 					</td>
 					<td>{{if .Nights}}{{nights .Nights}}{{else}}{{.Duration}}{{end}}</td>
 					<td>{{.Booking.Name}}{{if .Booking.Apartment}}<small class="muted"> lgh {{.Booking.Apartment}}</small>{{end}}</td>
-					<td><a href="mailto:{{.Booking.Email}}">{{.Booking.Email}}</a>{{with .Booking.Phone}}<small class="muted"> {{.}}</small>{{end}}</td>
+					<td>{{with .Booking.MMUsername}}<strong>@{{.}}</strong>{{else}}<span class="muted">–</span>{{end}}
+						{{with .Booking.Email}}<small class="muted"> {{.}}</small>{{end}}
+						{{with .Booking.Phone}}<small class="muted"> {{.}}</small>{{end}}</td>
 					<td>{{if eq .Booking.Status "confirmed"}}<span class="badge badge-free">bekräftad</span>{{else}}<span class="badge badge-busy">avbokad</span>{{end}}</td>
 					<td class="right">
 						{{if and (eq .Booking.Status "confirmed") .Upcoming}}

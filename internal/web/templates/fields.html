@@ -2,20 +2,31 @@
 {{$f := .Data.Form}}
 <div class="field-grid">
 	<div class="field">
-		<label for="name">Namn</label>
-		<input id="name" name="name" type="text" required autocomplete="name"
+		<label for="medlem">Vem bokar? <small>Mattermost</small></label>
+		<div class="member-field">
+			<span class="member-at" aria-hidden="true">@</span>
+			<input id="medlem" name="medlem" type="text" required autocomplete="off"
+			       spellcheck="false" autocapitalize="none" aria-controls="medlem-lista"
+			       value="{{$f.Member}}" placeholder="Anna Andersson eller anna.andersson"
+			       data-member-search data-member-name="#name">
+			<ul class="combo-list" id="medlem-lista" role="listbox"
+			    aria-label="Personer i huset" hidden></ul>
+		</div>
+		<small class="hint">
+			{{if .BotOn}}Sök på namn eller användarnamn. Bekräftelsen kommer som ett direktmeddelande från boten.{{else}}Mattermost är inte påslaget här – namnet sparas som du skriver det.{{end}}
+			{{with .AllowList}}<br>Under utprovningen kan bara <strong>{{.}}</strong> boka.{{end}}
+		</small>
+	</div>
+	<div class="field">
+		<label for="name">Namn <small>frivilligt</small></label>
+		<input id="name" name="name" type="text" autocomplete="name"
 		       value="{{$f.Name}}" placeholder="Anna Andersson">
+		<small class="hint">Lämna tomt för att använda namnet från Mattermost.</small>
 	</div>
 	<div class="field">
 		<label for="apartment">Lägenhet <small>frivilligt</small></label>
 		<input id="apartment" name="apartment" type="text" autocomplete="off"
 		       value="{{$f.Apartment}}" placeholder="1403">
-	</div>
-	<div class="field">
-		<label for="email">E-post</label>
-		<input id="email" name="email" type="email" required autocomplete="email"
-		       value="{{$f.Email}}" placeholder="anna@example.se">
-		<small class="hint">Bekräftelsen med kalenderfil skickas hit.</small>
 	</div>
 	<div class="field">
 		<label for="phone">Telefon <small>frivilligt</small></label>

@@ -90,7 +90,7 @@ func (s *Server) handleResource(w http.ResponseWriter, r *http.Request, v *view)
 
 	switch res.Rules.Mode {
 	case config.ModeHours:
-		page, err := s.buildHourPage(r, res, now, loc, v.Ident.Email)
+		page, err := s.buildHourPage(r, res, now, loc, v.Ident.MMUsername)
 		if err != nil {
 			s.log.Error("build hour page", "resource", res.ID, "err", err)
 			s.renderError(w, r, http.StatusInternalServerError, "Kunde inte läsa bokningarna", "Försök igen om en stund.")
@@ -100,7 +100,7 @@ func (s *Server) handleResource(w http.ResponseWriter, r *http.Request, v *view)
 		v.Data = data
 		s.render(w, r, http.StatusOK, "resource_hours.html", v)
 	case config.ModeDays:
-		page, err := s.buildDayPage(r, res, now, loc, v.Ident.Email)
+		page, err := s.buildDayPage(r, res, now, loc, v.Ident.MMUsername)
 		if err != nil {
 			s.log.Error("build day page", "resource", res.ID, "err", err)
 			s.renderError(w, r, http.StatusInternalServerError, "Kunde inte läsa bokningarna", "Försök igen om en stund.")
@@ -112,7 +112,7 @@ func (s *Server) handleResource(w http.ResponseWriter, r *http.Request, v *view)
 	}
 }
 
-func (s *Server) buildHourPage(r *http.Request, res config.Resource, now time.Time, loc *time.Location, myEmail string) (*hourPage, error) {
+func (s *Server) buildHourPage(r *http.Request, res config.Resource, now time.Time, loc *time.Location, me string) (*hourPage, error) {
 	// r.Form covers both the query string and a posted body, so a submission
 	// that fails validation re-renders the very day and slot the member chose.
 	q := formValues(r)
@@ -174,7 +174,7 @@ func (s *Server) buildHourPage(r *http.Request, res config.Resource, now time.Ti
 	}
 
 	page := &hourPage{Duration: dur, Param: booking.HoursParam(dur)}
-	page.Day = booking.BuildDay(res, day, dur, existing, now, loc, myEmail)
+	page.Day = booking.BuildDay(res, day, dur, existing, now, loc, me)
 
 	// The date strip covers two weeks, or less if the resource does not reach.
 	span := 14
@@ -195,7 +195,7 @@ func (s *Server) buildHourPage(r *http.Request, res config.Resource, now time.Ti
 		if d.After(limit) {
 			break
 		}
-		dv := booking.BuildDay(res, d, dur, stripBookings, now, loc, myEmail)
+		dv := booking.BuildDay(res, d, dur, stripBookings, now, loc, me)
 		page.Days = append(page.Days, dayTab{
 			Date:     d,
 			Label:    DateShort(d),
@@ -229,7 +229,7 @@ func (s *Server) buildHourPage(r *http.Request, res config.Resource, now time.Ti
 	// How many starts each length has on this day, so the buttons can show it.
 	for _, d := range res.Rules.Durations {
 		cand := time.Duration(d * float64(time.Hour))
-		dv := booking.BuildDay(res, day, cand, existing, now, loc, myEmail)
+		dv := booking.BuildDay(res, day, cand, existing, now, loc, me)
 		page.Durations = append(page.Durations, durationTab{
 			Param:    booking.HoursParam(cand),
 			Label:    booking.FormatDuration(cand),
@@ -251,7 +251,7 @@ func (s *Server) buildHourPage(r *http.Request, res config.Resource, now time.Ti
 	return page, nil
 }
 
-func (s *Server) buildDayPage(r *http.Request, res config.Resource, now time.Time, loc *time.Location, myEmail string) (*dayPage, error) {
+func (s *Server) buildDayPage(r *http.Request, res config.Resource, now time.Time, loc *time.Location, me string) (*dayPage, error) {
 	q := formValues(r)
 	today := truncDay(now.In(loc), loc)
 
@@ -277,7 +277,7 @@ func (s *Server) buildDayPage(r *http.Request, res config.Resource, now time.Tim
 		Prev:    month.AddDate(0, -1, 0),
 		Next:    month.AddDate(0, 1, 0),
 		HasPrev: month.After(thisMonth),
-		Cells:   booking.MonthGrid(res, month, existing, now, loc, myEmail),
+		Cells:   booking.MonthGrid(res, month, existing, now, loc, me),
 		From:    q.Get("fran"),
 		To:      q.Get("till"),
 	}
@@ -326,10 +326,11 @@ func (s *Server) buildDayPage(r *http.Request, res config.Resource, now time.Tim
 type bookingForm struct {
 	Name      string
 	Apartment string
-	Email     string
-	Phone     string
-	Note      string
-	Remember  bool
+	// Member is the Mattermost username the form names as the booker.
+	Member   string
+	Phone    string
+	Note     string
+	Remember bool
 }
 
 // formFromIdentity pre-fills the form from the remembered cookie.
@@ -337,7 +338,7 @@ func formFromIdentity(id auth.Identity) bookingForm {
 	return bookingForm{
 		Name:      id.Name,
 		Apartment: id.Apartment,
-		Email:     id.Email,
+		Member:    id.MMUsername,
 		Phone:     id.Phone,
 		Remember:  true,
 	}

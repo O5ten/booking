@@ -8,7 +8,7 @@
 		</svg>
 	</div>
 	<h1>Klart – det är bokat!</h1>
-	<p class="lede">{{if $.MailOn}}En bekräftelse med kalenderfil är på väg till {{$b.Email}}.{{else}}Spara sidan – e-postutskick är inte påslaget på den här servern.{{end}}</p>
+	<p class="lede">{{if and $.BotOn $b.MMUserID}}Boten skickar en bekräftelse med kalenderfil till <strong>@{{$b.MMUsername}}</strong> i Mattermost.{{else}}Spara sidan – Mattermost-utskick är inte påslaget på den här servern.{{end}}</p>
 	{{else}}
 	<h1>Bokning</h1>
 	{{end}}
@@ -33,7 +33,7 @@
 		{{with $row.Resource.Location}}<div class="receipt-row"><span>Var</span><strong>{{.}}</strong></div>{{end}}
 		<div class="receipt-row">
 			<span>Bokad av</span>
-			<strong>{{$b.Name}}{{if $b.Apartment}} · lgh {{$b.Apartment}}{{end}}</strong>
+			<strong>{{$b.Name}}{{if $b.MMUsername}} · @{{$b.MMUsername}}{{end}}{{if $b.Apartment}} · lgh {{$b.Apartment}}{{end}}</strong>
 		</div>
 		{{with $b.Note}}<div class="receipt-row"><span>Meddelande</span><strong>{{.}}</strong></div>{{end}}
 	</div>

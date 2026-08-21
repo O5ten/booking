@@ -19,9 +19,13 @@ type Request struct {
 	End       time.Time
 	Name      string
 	Apartment string
-	Email     string
-	Phone     string
-	Note      string
+	// MMUsername identifies the member, and every per-member cap counts
+	// against it. MMUserID is where the confirmation is sent.
+	MMUsername string
+	MMUserID   string
+	Email      string
+	Phone      string
+	Note       string
 }
 
 // Error is a validation failure phrased for the member reading the page.
@@ -45,8 +49,8 @@ func Validate(ctx context.Context, st *store.Store, req Request, now time.Time, 
 	if strings.TrimSpace(req.Name) == "" {
 		errs = append(errs, Error{Field: "name", Message: "Fyll i ditt namn."})
 	}
-	if !validEmail(req.Email) {
-		errs = append(errs, Error{Field: "email", Message: "Fyll i en giltig e-postadress – bekräftelsen skickas dit."})
+	if store.Member(req.MMUsername) == "" {
+		errs = append(errs, Error{Field: "member", Message: "Välj vem i huset som bokar – bekräftelsen skickas i Mattermost."})
 	}
 	if !req.End.After(req.Start) {
 		errs = append(errs, Error{Field: "time", Message: "Sluttiden måste vara efter starttiden."})
@@ -72,7 +76,7 @@ func Validate(ctx context.Context, st *store.Store, req Request, now time.Time, 
 
 	// Per-member caps.
 	if ru.MaxActivePerUser > 0 {
-		n, err := st.CountActiveForUser(ctx, r.ID, req.Email, now)
+		n, err := st.CountActiveForUser(ctx, r.ID, req.MMUsername, now)
 		if err != nil {
 			return blockFrom, blockTo, []Error{{Message: "Kunde inte kontrollera dina bokningar. Försök igen."}}
 		}
@@ -84,7 +88,7 @@ func Validate(ctx context.Context, st *store.Store, req Request, now time.Time, 
 	if ru.MaxHoursPerWeekPerUser > 0 {
 		weekFrom := req.Start.AddDate(0, 0, -7)
 		weekTo := req.Start.AddDate(0, 0, 7)
-		used, err := st.HoursForUserBetween(ctx, r.ID, req.Email, weekFrom, weekTo)
+		used, err := st.HoursForUserBetween(ctx, r.ID, req.MMUsername, weekFrom, weekTo)
 		if err != nil {
 			return blockFrom, blockTo, []Error{{Message: "Kunde inte kontrollera dina bokningar. Försök igen."}}
 		}
@@ -294,17 +298,4 @@ func Durations(ds []float64) []time.Duration {
 		out[i] = durationOf(d)
 	}
 	return out
-}
-
-func validEmail(s string) bool {
-	s = strings.TrimSpace(s)
-	at := strings.LastIndex(s, "@")
-	if at < 1 || at == len(s)-1 || len(s) > 254 {
-		return false
-	}
-	domain := s[at+1:]
-	if !strings.Contains(domain, ".") || strings.HasPrefix(domain, ".") || strings.HasSuffix(domain, ".") {
-		return false
-	}
-	return !strings.ContainsAny(s, " \t\r\n,;<>")
 }

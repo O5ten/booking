@@ -25,13 +25,21 @@ const (
 
 // Booking is one reservation of one resource.
 type Booking struct {
-	ID          string
-	ResourceID  string
-	Start       time.Time
-	End         time.Time
-	Mode        string
-	Name        string
-	Apartment   string
+	ID         string
+	ResourceID string
+	Start      time.Time
+	End        time.Time
+	Mode       string
+	Name       string
+	Apartment  string
+	// MMUsername is the member's Mattermost username, lowercased. It is the
+	// identity every per-member rule counts against.
+	MMUsername string
+	// MMUserID is the immutable Mattermost account id, used to reach the
+	// member with a direct message.
+	MMUserID string
+	// Email comes from the Mattermost account and is kept for the admin view
+	// and the calendar file. Nothing keys off it.
 	Email       string
 	Phone       string
 	Note        string
@@ -59,7 +67,9 @@ CREATE TABLE IF NOT EXISTS bookings (
 	mode         TEXT NOT NULL DEFAULT 'hours',
 	name         TEXT NOT NULL,
 	apartment    TEXT NOT NULL DEFAULT '',
-	email        TEXT NOT NULL,
+	mm_username  TEXT NOT NULL DEFAULT '',
+	mm_user_id   TEXT NOT NULL DEFAULT '',
+	email        TEXT NOT NULL DEFAULT '',
 	phone        TEXT NOT NULL DEFAULT '',
 	note         TEXT NOT NULL DEFAULT '',
 	status       TEXT NOT NULL DEFAULT 'confirmed',
@@ -70,8 +80,6 @@ CREATE TABLE IF NOT EXISTS bookings (
 );
 CREATE INDEX IF NOT EXISTS idx_bookings_resource_time
 	ON bookings (resource_id, start_utc, end_utc);
-CREATE INDEX IF NOT EXISTS idx_bookings_email
-	ON bookings (email, start_utc);
 CREATE INDEX IF NOT EXISTS idx_bookings_status
 	ON bookings (status, start_utc);
 `
@@ -102,7 +110,51 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(schema); err != nil {
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
+	if err := migrate(db); err != nil {
+		return nil, err
+	}
 	return &Store{db: db}, nil
+}
+
+// migrate adds columns that arrived after the first release, and the indexes
+// that depend on them. A database from before the Mattermost switch has
+// bookings but no Mattermost columns; adding them empty keeps that history
+// readable instead of throwing it away. This runs after the schema above, so
+// the member index is created here rather than there: on an old database the
+// column does not exist yet when the schema is applied.
+func migrate(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(bookings)`)
+	if err != nil {
+		return fmt.Errorf("read table info: %w", err)
+	}
+	defer rows.Close()
+	have := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull int
+		var dflt sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return fmt.Errorf("read table info: %w", err)
+		}
+		have[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read table info: %w", err)
+	}
+	for _, col := range []string{"mm_username", "mm_user_id"} {
+		if have[col] {
+			continue
+		}
+		if _, err := db.Exec(`ALTER TABLE bookings ADD COLUMN ` + col + ` TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add column %s: %w", col, err)
+		}
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_bookings_member ON bookings (mm_username, start_utc)`); err != nil {
+		return fmt.Errorf("index members: %w", err)
+	}
+	return nil
 }
 
 // Close releases the database handle.
@@ -114,15 +166,17 @@ var ErrConflict = errors.New("tiden är redan bokad")
 // ErrNotFound is returned when a booking id or token does not exist.
 var ErrNotFound = errors.New("bokningen hittades inte")
 
-const selectCols = `id, resource_id, start_utc, end_utc, mode, name, apartment, email,
-	phone, note, status, cancel_token, created_at, cancelled_at, created_ip`
+const selectCols = `id, resource_id, start_utc, end_utc, mode, name, apartment,
+	mm_username, mm_user_id, email, phone, note, status, cancel_token, created_at,
+	cancelled_at, created_ip`
 
 func scan(rows interface{ Scan(...any) error }) (Booking, error) {
 	var b Booking
 	var start, end, created string
 	var cancelled sql.NullString
 	err := rows.Scan(&b.ID, &b.ResourceID, &start, &end, &b.Mode, &b.Name, &b.Apartment,
-		&b.Email, &b.Phone, &b.Note, &b.Status, &b.CancelToken, &created, &cancelled, &b.CreatedIP)
+		&b.MMUsername, &b.MMUserID, &b.Email, &b.Phone, &b.Note, &b.Status, &b.CancelToken,
+		&created, &cancelled, &b.CreatedIP)
 	if err != nil {
 		return b, err
 	}
@@ -173,9 +227,10 @@ func (s *Store) Create(ctx context.Context, b Booking, blockFrom, blockTo time.T
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO bookings (`+selectCols+`)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		b.ID, b.ResourceID, utc(b.Start), utc(b.End), b.Mode, b.Name, b.Apartment,
-		b.Email, b.Phone, b.Note, b.Status, b.CancelToken, utc(b.CreatedAt), nil, b.CreatedIP)
+		Member(b.MMUsername), b.MMUserID, b.Email, b.Phone, b.Note, b.Status, b.CancelToken,
+		utc(b.CreatedAt), nil, b.CreatedIP)
 	if err != nil {
 		return err
 	}
@@ -232,7 +287,7 @@ func (s *Store) InRange(ctx context.Context, resourceID string, from, to time.Ti
 // Filter describes an arbitrary booking search, used by the admin view.
 type Filter struct {
 	ResourceID string
-	Email      string
+	Member     string
 	Query      string
 	From       *time.Time
 	To         *time.Time
@@ -249,9 +304,9 @@ func (s *Store) Search(ctx context.Context, f Filter) ([]Booking, error) {
 		where = append(where, "resource_id = ?")
 		args = append(args, f.ResourceID)
 	}
-	if f.Email != "" {
-		where = append(where, "lower(email) = ?")
-		args = append(args, strings.ToLower(f.Email))
+	if f.Member != "" {
+		where = append(where, "mm_username = ?")
+		args = append(args, Member(f.Member))
 	}
 	if f.Status != "" {
 		where = append(where, "status = ?")
@@ -266,9 +321,10 @@ func (s *Store) Search(ctx context.Context, f Filter) ([]Booking, error) {
 		args = append(args, utc(*f.To))
 	}
 	if f.Query != "" {
-		where = append(where, "(lower(name) LIKE ? OR lower(email) LIKE ? OR lower(apartment) LIKE ? OR lower(note) LIKE ?)")
+		where = append(where, `(lower(name) LIKE ? OR mm_username LIKE ? OR lower(email) LIKE ?
+			OR lower(apartment) LIKE ? OR lower(note) LIKE ?)`)
 		like := "%" + strings.ToLower(f.Query) + "%"
-		args = append(args, like, like, like, like)
+		args = append(args, like, like, like, like, like)
 	}
 	q := `SELECT ` + selectCols + ` FROM bookings`
 	if len(where) > 0 {
@@ -285,10 +341,19 @@ func (s *Store) Search(ctx context.Context, f Filter) ([]Booking, error) {
 	return s.query(ctx, q, args...)
 }
 
-// ByEmail returns a member's own bookings, newest upcoming first.
-func (s *Store) ByEmail(ctx context.Context, email string, includeCancelled bool, since time.Time) ([]Booking, error) {
-	q := `SELECT ` + selectCols + ` FROM bookings WHERE lower(email) = ? AND end_utc > ?`
-	args := []any{strings.ToLower(strings.TrimSpace(email)), utc(since)}
+// Member normalizes a Mattermost username into the form used as the member
+// key: lowercase, no leading @.
+func Member(username string) string {
+	return strings.ToLower(strings.TrimPrefix(strings.TrimSpace(username), "@"))
+}
+
+// ByMember returns a member's own bookings, earliest first.
+func (s *Store) ByMember(ctx context.Context, username string, includeCancelled bool, since time.Time) ([]Booking, error) {
+	if Member(username) == "" {
+		return nil, nil
+	}
+	q := `SELECT ` + selectCols + ` FROM bookings WHERE mm_username = ? AND end_utc > ?`
+	args := []any{Member(username), utc(since)}
 	if !includeCancelled {
 		q += ` AND status = ?`
 		args = append(args, StatusConfirmed)
@@ -299,18 +364,18 @@ func (s *Store) ByEmail(ctx context.Context, email string, includeCancelled bool
 
 // CountActiveForUser counts a member's confirmed bookings of one resource that
 // have not yet ended.
-func (s *Store) CountActiveForUser(ctx context.Context, resourceID, email string, now time.Time) (int, error) {
+func (s *Store) CountActiveForUser(ctx context.Context, resourceID, username string, now time.Time) (int, error) {
 	var n int
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM bookings
-		WHERE resource_id = ? AND lower(email) = ? AND status = ? AND end_utc > ?`,
-		resourceID, strings.ToLower(email), StatusConfirmed, utc(now)).Scan(&n)
+		WHERE resource_id = ? AND mm_username = ? AND status = ? AND end_utc > ?`,
+		resourceID, Member(username), StatusConfirmed, utc(now)).Scan(&n)
 	return n, err
 }
 
 // HoursForUserBetween sums a member's booked hours for one resource inside a window.
-func (s *Store) HoursForUserBetween(ctx context.Context, resourceID, email string, from, to time.Time) (float64, error) {
-	rows, err := s.InRangeForEmail(ctx, resourceID, email, from, to)
+func (s *Store) HoursForUserBetween(ctx context.Context, resourceID, username string, from, to time.Time) (float64, error) {
+	rows, err := s.InRangeForUser(ctx, resourceID, username, from, to)
 	if err != nil {
 		return 0, err
 	}
@@ -330,12 +395,12 @@ func (s *Store) HoursForUserBetween(ctx context.Context, resourceID, email strin
 	return total, nil
 }
 
-// InRangeForEmail returns one member's confirmed bookings overlapping a window.
-func (s *Store) InRangeForEmail(ctx context.Context, resourceID, email string, from, to time.Time) ([]Booking, error) {
+// InRangeForUser returns one member's confirmed bookings overlapping a window.
+func (s *Store) InRangeForUser(ctx context.Context, resourceID, username string, from, to time.Time) ([]Booking, error) {
 	return s.query(ctx, `SELECT `+selectCols+` FROM bookings
-		WHERE resource_id = ? AND lower(email) = ? AND status = ?
+		WHERE resource_id = ? AND mm_username = ? AND status = ?
 		  AND start_utc < ? AND end_utc > ? ORDER BY start_utc`,
-		resourceID, strings.ToLower(email), StatusConfirmed, utc(to), utc(from))
+		resourceID, Member(username), StatusConfirmed, utc(to), utc(from))
 }
 
 // Stats summarises the database for the admin dashboard.

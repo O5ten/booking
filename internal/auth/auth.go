@@ -151,19 +151,23 @@ func (g *Guard) verify(value string) (string, bool) {
 type Identity struct {
 	Name      string
 	Apartment string
-	Email     string
-	Phone     string
+	// MMUsername and MMUserID are the member's Mattermost account, which is
+	// how the booking system knows who someone is and how to reach them.
+	MMUsername string
+	MMUserID   string
+	Phone      string
 }
 
 // Empty reports whether nothing is remembered.
-func (i Identity) Empty() bool { return i.Name == "" && i.Email == "" }
+func (i Identity) Empty() bool { return i.Name == "" && i.MMUsername == "" }
 
 // RememberIdentity stores the member's details in a signed cookie.
 func (g *Guard) RememberIdentity(w http.ResponseWriter, id Identity) {
 	raw := strings.Join([]string{
 		base64.RawURLEncoding.EncodeToString([]byte(id.Name)),
 		base64.RawURLEncoding.EncodeToString([]byte(id.Apartment)),
-		base64.RawURLEncoding.EncodeToString([]byte(id.Email)),
+		base64.RawURLEncoding.EncodeToString([]byte(id.MMUsername)),
+		base64.RawURLEncoding.EncodeToString([]byte(id.MMUserID)),
 		base64.RawURLEncoding.EncodeToString([]byte(id.Phone)),
 	}, "~")
 	exp := time.Now().Add(365 * 24 * time.Hour)
@@ -190,7 +194,10 @@ func (g *Guard) Identity(r *http.Request) Identity {
 		return Identity{}
 	}
 	parts := strings.Split(raw, "~")
-	if len(parts) != 4 {
+	// Cookies written before the Mattermost switch had four parts and an
+	// e-mail address where the account now goes. There is nothing to salvage,
+	// so they are simply forgotten.
+	if len(parts) != 5 {
 		return Identity{}
 	}
 	dec := func(s string) string {
@@ -200,7 +207,13 @@ func (g *Guard) Identity(r *http.Request) Identity {
 		}
 		return string(b)
 	}
-	return Identity{Name: dec(parts[0]), Apartment: dec(parts[1]), Email: dec(parts[2]), Phone: dec(parts[3])}
+	return Identity{
+		Name:       dec(parts[0]),
+		Apartment:  dec(parts[1]),
+		MMUsername: dec(parts[2]),
+		MMUserID:   dec(parts[3]),
+		Phone:      dec(parts[4]),
+	}
 }
 
 // Token returns a random URL-safe token, used for cancel links.

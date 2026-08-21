@@ -20,7 +20,7 @@ import (
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/auth"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/config"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/demo"
-	"github.com/mikaelo/booking.rudbeckia.nu/internal/mail"
+	"github.com/mikaelo/booking.rudbeckia.nu/internal/mattermost"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/store"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/web"
 )
@@ -131,15 +131,27 @@ func run(log *slog.Logger) error {
 
 	secure := strings.HasPrefix(rt.BaseURL, "https://")
 	guard := auth.New(rt.Password, rt.AdminPassword, rt.SessionSecret, rt.SessionMaxAge, secure)
-	mailer := mail.NewSender(rt.Mail, log)
-	if !mailer.Enabled() {
-		log.Warn("SMTP is not configured; confirmation e-mails will only be logged")
+	bot := mattermost.New(rt.Mattermost.URL, rt.Mattermost.Token, log)
+	if bot.Enabled() {
+		// Check the token now: a bot that cannot log in must be a startup
+		// complaint, not a mystery when the first booking is made.
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		me, err := bot.Verify(ctx)
+		cancel()
+		if err != nil {
+			return fmt.Errorf("mattermost: %w", err)
+		}
+		log.Info("mattermost bot ready", "server", rt.Mattermost.URL,
+			"bot", me.Username, "allowed", allowedLabel(rt.Mattermost))
+	} else {
+		log.Warn("Mattermost is not configured; confirmations will only be logged " +
+			"and members are taken as typed")
 	}
 	if !guard.HasAdmin() {
 		log.Warn("ADMIN_PASSWORD is not set; the /admin view is unavailable")
 	}
 
-	srv, err := web.New(cfg, rt, st, guard, mailer, log)
+	srv, err := web.New(cfg, rt, st, guard, bot, log)
 	if err != nil {
 		return err
 	}
@@ -173,6 +185,14 @@ func run(log *slog.Logger) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	return httpSrv.Shutdown(ctx)
+}
+
+// allowedLabel describes the booking allow list for the startup log.
+func allowedLabel(m config.MattermostSettings) string {
+	if len(m.Allow) == 0 {
+		return "everyone in the directory"
+	}
+	return m.AllowList()
 }
 
 func parseLevel(s string) slog.Level {

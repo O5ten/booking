@@ -1,8 +1,9 @@
 # booking
 
 Bokningssystem för Kollektivhuset Rudbeckia. Husets medlemmar bokar cyklar,
-gästrum och lokaler bakom ett gemensamt lösenord, får en bekräftelse på mejlen
-och kan lägga in bokningen i sin egen kalender.
+gästrum och lokaler bakom ett gemensamt lösenord, får en bekräftelse som
+direktmeddelande från husets Mattermost-bot och kan lägga in bokningen i sin
+egen kalender.
 
 Byggt som en enda statisk Go-binär med SQLite. Ingen databasserver, ingen
 byggkedja för frontend, inget att uppdatera utöver containern.
@@ -69,6 +70,36 @@ BOOKING_PASSWORD=hemligt go run ./cmd/server
 ```
 
 Alla vardagskommandon finns i `Makefile` — kör `make` för att se dem.
+
+---
+
+## Boten i Mattermost
+
+Bekräftelser och avbokningar går som direktmeddelanden från ett bot-konto, och
+samma konto används för att slå upp vem i huset som bokar. Så här kopplar du in
+det:
+
+1. I Mattermost: **System Console → Integrations → Bot Accounts**, slå på dem.
+2. **Integrations → Bot Accounts → Add Bot Account**. Kalla den `booking`.
+3. Kopiera token som visas *en gång* och lägg den i `.env` som
+   `MATTERMOST_TOKEN`. Sätt `MATTERMOST_URL` till husets adress.
+4. Boten behöver få slå upp användare och skicka direktmeddelanden. Ett vanligt
+   bot-konto räcker; den behöver inte vara systemadministratör.
+5. Starta om: `docker compose up -d`. Loggen säger `mattermost bot ready` med
+   botens användarnamn om token fungerar, och vägrar starta om den inte gör det.
+
+```bash
+# .env
+MATTERMOST_URL=https://chat.rudbeckia.nu
+MATTERMOST_TOKEN=...
+# Medan huset provar: bara de här användarnamnen får boka. Tom = alla.
+MATTERMOST_ALLOW=mikael.ostberg
+```
+
+Utan `MATTERMOST_URL` och `MATTERMOST_TOKEN` fungerar sajten ändå: bokningar
+går igenom, användarnamnet sparas som det skrivs och bekräftelsen skrivs i
+loggen i stället för att skickas. Det är också vad demoläget gör — demon når
+aldrig en riktig chattserver.
 
 ---
 
@@ -178,7 +209,7 @@ utgångspunkt när huset vill boka fler saker digitalt.
 | `buffer_minutes` | båda | tvingande fri tid mellan två bokningar |
 | `max_advance_days` | båda | hur långt fram i tiden man får boka |
 | `min_notice_minutes` | båda | hur nära inpå man får boka |
-| `max_active_per_user` | båda | samtidiga bokningar per e-postadress |
+| `max_active_per_user` | båda | samtidiga bokningar per Mattermost-konto |
 | `max_hours_per_week_per_user` | hours | takt-tak per person, 0 = inget tak |
 
 ---
@@ -191,7 +222,7 @@ Allt hemligt sätts som miljövariabler, aldrig i `config.yaml`. Se
 | Variabel | Standard | Betyder |
 |---|---|---|
 | `BOOKING_PASSWORD` | – | **Krävs.** Husets gemensamma lösenord |
-| `BASE_URL` | `http://localhost:8080` | Adressen som hamnar i mejl och kalenderlänkar |
+| `BASE_URL` | `http://localhost:8080` | Adressen som hamnar i botens meddelanden och kalenderlänkar |
 | `ADMIN_PASSWORD` | tom | Låser upp `/admin`. Tom = ingen adminvy |
 | `SESSION_SECRET` | härleds | Signerar sessionskakor |
 | `SESSION_DAYS` | `30` | Hur länge en inloggning håller |
@@ -200,7 +231,9 @@ Allt hemligt sätts som miljövariabler, aldrig i `config.yaml`. Se
 | `LISTEN_ADDR` | `:8080` | Adress att lyssna på |
 | `TRUST_PROXY` | `true` | Läs klientens IP ur `X-Forwarded-For` |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn` eller `error` |
-| `SMTP_HOST` m.fl. | tom | Utan dessa loggas bekräftelserna i stället för att skickas |
+| `MATTERMOST_URL` | tom | Husets Mattermost, t.ex. `https://chat.rudbeckia.nu` |
+| `MATTERMOST_TOKEN` | tom | Bot-kontots access token. Utan URL och token loggas bekräftelserna i stället för att skickas |
+| `MATTERMOST_ALLOW` | tom | Kommaseparerade användarnamn som får boka. Tom = alla i katalogen |
 | `DEMO` | `false` | Demoläge: lösenorden `demo`/`admin`, exempelbokningar och en banner. Aldrig i skarp drift |
 
 Sätter du inte `SESSION_SECRET` härleds den ur lösenorden. Det betyder att ett
@@ -211,14 +244,39 @@ byte av husets lösenord loggar ut alla — praktiskt när någon flyttar ut.
 ## Så fungerar det
 
 **Ett lösenord, inga konton.** Hela sajten ligger bakom `BOOKING_PASSWORD`.
-Medlemmen skriver sitt namn och sin e-post när hen bokar; uppgifterna sparas i
-en signerad kaka så nästa bokning går fortare. `ADMIN_PASSWORD` ger dessutom
-`/admin` med alla bokningar, filter och CSV-export.
+Vem som bokar väljs ur husets Mattermost-katalog: medlemmen söker på sitt namn
+eller sitt användarnamn — **Anna Andersson**, **Östberg** och
+**anna.andersson** hittar alla rätt person — och får förslag medan hen skriver.
+Namn och e-post hämtas från kontot, så det finns inget att skriva fel. Valet
+sparas i en signerad kaka så nästa bokning går fortare. `ADMIN_PASSWORD` ger
+dessutom `/admin` med alla bokningar, filter och CSV-export.
 
-**Bekräftelse på mejlen.** När bokningen gått igenom skickas ett mejl med en
-bifogad `.ics`-fil (Apple Calendar, Outlook, Thunderbird) och direktlänkar till
-Google Calendar och Outlook på webben. Mejlet innehåller också länken för att
-avboka.
+**Sökningen sker i webbläsaren.** Listan över dem som får boka hämtas en gång
+när formuläret öppnas och indexeras i ett trie: varje ord i varje namn och
+användarnamn pekar på de personer det hör till, så ett prefix går direkt till
+sina träffar utan att röra någon annan. Ingen förfrågan per tangenttryck, och
+träffarna kommer innan man hunnit släppa tangenten. Accenter faldas åt båda
+hållen, och flera ord måste alla stämma — *mikael öst* hittar Mikael Östberg
+men inte Mikael Ek. Är huset större än tusen konton skickas listan inte alls;
+då söker servern i stället, och fältet fungerar precis som förut.
+
+Utan JavaScript är fältet en vanlig textruta: skriv användarnamnet, eller hela
+namnet, och servern slår upp det. Två personer med samma namn får ett
+felmeddelande som räknar upp bägges användarnamn i stället för en gissning.
+
+**Bekräftelse i Mattermost.** När bokningen gått igenom skickar boten ett
+direktmeddelande med en bifogad `.ics`-fil (Apple Calendar, Outlook,
+Thunderbird) och en direktlänk till Google Calendar. Meddelandet innehåller
+också länken för att avboka. Avbokningar skickas på samma sätt.
+
+**Bara boten pratar utåt.** Kommunikationen går bara i en riktning: boten
+skickar, den lyssnar inte. Det finns ingen inkommande webhook och inget slash
+command att konfigurera, och därmed ingen ny väg in i huset.
+
+**Vem som får boka.** `MATTERMOST_ALLOW` begränsar bokning till en lista
+användarnamn medan huset provar systemet. Användarväljaren visar bara dem som
+får boka, så den kan inte föreslå någon som formuläret sedan nekar. Tom lista
+betyder att alla i katalogen får boka.
 
 **Vem har bokat vad.** Varje resurs har en sida med alla kommande bokningar i
 tidsordning, på `/resurs/<id>/bokningar`, länkad från startsidan och från
@@ -237,7 +295,8 @@ och behåller sina ifyllda uppgifter.
 
 ## Bakom en proxy
 
-Sätt `BASE_URL` till den riktiga adressen — den styr länkarna i mejlen, och den
+Sätt `BASE_URL` till den riktiga adressen — den styr länkarna i botens
+meddelanden, och den
 avgör om sessionskakan sätts som `Secure` (den blir det när adressen är
 `https://`). Exempel för Caddy:
 
@@ -305,11 +364,16 @@ varande databas — eller stoppa containern först.
 ## Utveckling
 
 ```bash
-go test ./...          # alla tester
-go test -race ./...    # med kapplöpningsdetektor
+go test ./...                        # alla tester
+go test -race ./...                  # med kapplöpningsdetektor
 go vet ./...
+node --test internal/web/static/     # sökningen i webbläsaren (make test-js)
 BOOKING_PASSWORD=hemligt ADMIN_PASSWORD=admin go run ./cmd/server
 ```
+
+Det finns ingen byggkedja för frontend. `members.js` är ett vanligt skript utan
+importer, så testerna laddar det med en attrapp för `window` och läser vad det
+exporterade — Node behövs bara om du vill köra just dem.
 
 | Paket | Ansvar |
 |---|---|
@@ -317,10 +381,12 @@ BOOKING_PASSWORD=hemligt ADMIN_PASSWORD=admin go run ./cmd/server
 | `internal/store` | SQLite: bokningar, kollisioner, sökning |
 | `internal/booking` | Räknar ut lediga tider och validerar en bokning |
 | `internal/auth` | Lösenordsgrind, signerade kakor, tokens |
-| `internal/mail` | Bygger och skickar MIME-mejlen |
+| `internal/mattermost` | Bot-klient: användarkatalog och direktmeddelanden |
 | `internal/ical` | `.ics`-filer och kalenderlänkar |
 | `internal/web` | Rutter, HTML-mallar, CSS |
 | `internal/demo` | Exempelbokningar för demoläget |
 
 Mallar och statiska filer bäddas in i binären med `go:embed`, så det finns bara
-en fil att flytta runt.
+en fil att flytta runt. CSS och JavaScript länkas med en hash av innehållet i
+adressen (`/static/app.js?v=…`), så en ny version når webbläsarna direkt i
+stället för att ligga kvar i deras cache en timme.

@@ -4,7 +4,9 @@ package web
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -17,26 +19,36 @@ import (
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/auth"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/booking"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/config"
-	"github.com/mikaelo/booking.rudbeckia.nu/internal/mail"
+	"github.com/mikaelo/booking.rudbeckia.nu/internal/mattermost"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/store"
 )
 
 //go:embed templates/*.html
 var templateFS embed.FS
 
-//go:embed static
+// The patterns are by extension rather than the whole directory, so the
+// browser-side test file next to members.js stays out of the binary.
+//
+//go:embed static/*.css static/*.js static/*.png
 var staticFS embed.FS
 
 // Server holds everything the handlers need.
 type Server struct {
-	cfg    *config.Config
-	rt     config.Runtime
-	store  *store.Store
-	guard  *auth.Guard
-	mailer *mail.Sender
-	log    *slog.Logger
-	tpl    map[string]*template.Template
-	now    func() time.Time
+	cfg   *config.Config
+	rt    config.Runtime
+	store *store.Store
+	guard *auth.Guard
+	mm    *mattermost.Client
+	log   *slog.Logger
+	tpl   map[string]*template.Template
+	now   func() time.Time
+
+	// members caches the bookable directory the user picker searches.
+	members memberCache
+
+	// assets maps a static file to a short content hash, so a new release is
+	// fetched instead of served from a browser cache for another hour.
+	assets map[string]string
 }
 
 // pages are the top-level templates. Each is parsed into its own set together
@@ -51,8 +63,12 @@ var pages = []string{
 var layouts = []string{"base.html", "fields.html"}
 
 // New builds the HTTP server.
-func New(cfg *config.Config, rt config.Runtime, st *store.Store, guard *auth.Guard, mailer *mail.Sender, log *slog.Logger) (*Server, error) {
-	s := &Server{cfg: cfg, rt: rt, store: st, guard: guard, mailer: mailer, log: log, now: time.Now}
+func New(cfg *config.Config, rt config.Runtime, st *store.Store, guard *auth.Guard, mm *mattermost.Client, log *slog.Logger) (*Server, error) {
+	s := &Server{cfg: cfg, rt: rt, store: st, guard: guard, mm: mm, log: log, now: time.Now}
+	var err error
+	if s.assets, err = hashAssets(); err != nil {
+		return nil, err
+	}
 	s.tpl = make(map[string]*template.Template, len(pages))
 	for _, page := range pages {
 		files := make([]string, 0, len(layouts)+1)
@@ -67,6 +83,38 @@ func New(cfg *config.Config, rt config.Runtime, st *store.Store, guard *auth.Gua
 		s.tpl[page] = t
 	}
 	return s, nil
+}
+
+// hashAssets fingerprints the embedded static files. The files live in the
+// binary, so this happens once at startup and cannot change afterwards.
+func hashAssets() (map[string]string, error) {
+	out := map[string]string{}
+	entries, err := fs.ReadDir(staticFS, "static")
+	if err != nil {
+		return nil, fmt.Errorf("read static files: %w", err)
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		raw, err := staticFS.ReadFile("static/" + e.Name())
+		if err != nil {
+			return nil, fmt.Errorf("read static/%s: %w", e.Name(), err)
+		}
+		sum := sha256.Sum256(raw)
+		out[e.Name()] = hex.EncodeToString(sum[:])[:10]
+	}
+	return out, nil
+}
+
+// asset returns the URL for a static file, stamped with its content hash.
+// Browsers may then cache it for as long as they like: a changed file has a
+// changed address, so nobody is left running last week's JavaScript.
+func (s *Server) asset(name string) string {
+	if sum, ok := s.assets[name]; ok {
+		return "/static/" + name + "?v=" + sum
+	}
+	return "/static/" + name
 }
 
 // Handler returns the router with middleware applied.
@@ -97,6 +145,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /bokning/{id}/kalender.ics", s.member(s.handleBookingICS))
 	mux.Handle("POST /bokning/{id}/avboka", s.member(s.handleCancel))
 	mux.Handle("GET /mina", s.member(s.handleMyBookings))
+	mux.Handle("GET /medlemmar", s.member(s.handleMemberSearch))
 	mux.Handle("GET /kalender/{id}/flode.ics", s.member(s.handleResourceFeed))
 
 	mux.Handle("GET /admin", s.admin(s.handleAdmin))
@@ -155,7 +204,8 @@ type view struct {
 	Path      string
 	Title     string
 	HasAdmin  bool
-	MailOn    bool
+	BotOn     bool
+	AllowList string
 	Demo      bool
 	DemoPass  string
 	DemoAdmin string
@@ -166,14 +216,15 @@ type view struct {
 
 func (s *Server) newView(r *http.Request, role auth.Role) *view {
 	return &view{
-		Site:     s.cfg.Site,
-		Role:     role,
-		Ident:    s.guard.Identity(r),
-		Now:      s.now().In(s.cfg.Location()),
-		Loc:      s.cfg.Location(),
-		Path:     r.URL.Path,
-		HasAdmin: s.guard.HasAdmin(),
-		MailOn:   s.mailer.Enabled(),
+		Site:      s.cfg.Site,
+		Role:      role,
+		Ident:     s.guard.Identity(r),
+		Now:       s.now().In(s.cfg.Location()),
+		Loc:       s.cfg.Location(),
+		Path:      r.URL.Path,
+		HasAdmin:  s.guard.HasAdmin(),
+		BotOn:     s.mm.Enabled(),
+		AllowList: s.rt.Mattermost.AllowList(),
 
 		Demo:      s.rt.Demo,
 		DemoPass:  s.rt.Password,
@@ -246,6 +297,7 @@ func (s *Server) funcs() template.FuncMap {
 			return template.URL(base + "?" + q.Encode())
 		},
 		"hasPrefix": strings.HasPrefix,
+		"asset":     s.asset,
 	}
 }
 
@@ -274,9 +326,17 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
+// cacheStatic lets browsers keep static files. A request carrying a ?v= hash
+// is answered as immutable, because that exact content will never change; a
+// bare request (an old page, or a hand-typed URL) gets a short cache instead,
+// so a stale copy cannot outlive the day.
 func cacheStatic(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "public, max-age=3600")
+		if r.URL.Query().Get("v") != "" {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "public, max-age=300")
+		}
 		next.ServeHTTP(w, r)
 	})
 }

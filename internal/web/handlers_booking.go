@@ -29,19 +29,30 @@ func (s *Server) handleCreateBooking(w http.ResponseWriter, r *http.Request, v *
 	form := bookingForm{
 		Name:      strings.TrimSpace(r.FormValue("name")),
 		Apartment: strings.TrimSpace(r.FormValue("apartment")),
-		Email:     strings.TrimSpace(r.FormValue("email")),
-		Phone:     strings.TrimSpace(r.FormValue("phone")),
-		Note:      strings.TrimSpace(r.FormValue("note")),
-		Remember:  r.FormValue("remember") != "",
+		// Kept as typed: the resolver understands names as well as usernames,
+		// and if it fails the member sees their own words back in the field.
+		Member:   strings.TrimSpace(r.FormValue("medlem")),
+		Phone:    strings.TrimSpace(r.FormValue("phone")),
+		Note:     strings.TrimSpace(r.FormValue("note")),
+		Remember: r.FormValue("remember") != "",
+	}
+
+	// Who is booking? The form names a Mattermost account; everything else
+	// about the member comes from there, including where to send the
+	// confirmation.
+	who, memberErrs := s.resolveMember(r.Context(), form.Member)
+	if form.Name == "" {
+		form.Name = who.DisplayName()
 	}
 
 	start, end, parseErrs := s.parseInterval(res, r, loc)
-	errs := parseErrs
+	errs := append(memberErrs, parseErrs...)
 	if len(errs) == 0 {
 		req := booking.Request{
 			Resource: res, Start: start, End: end,
 			Name: form.Name, Apartment: form.Apartment,
-			Email: form.Email, Phone: form.Phone, Note: form.Note,
+			MMUsername: who.Username, MMUserID: who.ID,
+			Email: who.Email, Phone: form.Phone, Note: form.Note,
 		}
 		blockFrom, blockTo, verrs := booking.Validate(r.Context(), s.store, req, now, loc)
 		errs = verrs
@@ -54,7 +65,9 @@ func (s *Server) handleCreateBooking(w http.ResponseWriter, r *http.Request, v *
 				Mode:        string(res.Rules.Mode),
 				Name:        form.Name,
 				Apartment:   form.Apartment,
-				Email:       form.Email,
+				MMUsername:  who.Username,
+				MMUserID:    who.ID,
+				Email:       who.Email,
 				Phone:       form.Phone,
 				Note:        form.Note,
 				Status:      store.StatusConfirmed,
@@ -73,11 +86,12 @@ func (s *Server) handleCreateBooking(w http.ResponseWriter, r *http.Request, v *
 				if form.Remember {
 					s.guard.RememberIdentity(w, auth.Identity{
 						Name: form.Name, Apartment: form.Apartment,
-						Email: form.Email, Phone: form.Phone,
+						MMUsername: who.Username, MMUserID: who.ID,
+						Phone: form.Phone,
 					})
 				}
 				s.log.Info("booking created", "id", b.ID, "resource", res.ID,
-					"start", b.Start, "end", b.End, "email", b.Email)
+					"start", b.Start, "end", b.End, "member", b.MMUsername)
 				go s.notifyCreated(b, res)
 				http.Redirect(w, r, "/bokning/"+b.ID+"?ny=1", http.StatusSeeOther)
 				return
@@ -92,14 +106,14 @@ func (s *Server) handleCreateBooking(w http.ResponseWriter, r *http.Request, v *
 	case config.ModeHours:
 		// buildHourPage reads the posted fields, so the member's day, length
 		// and start time survive the round trip and the form stays open.
-		page, err := s.buildHourPage(r, res, now, loc, form.Email)
+		page, err := s.buildHourPage(r, res, now, loc, form.Member)
 		if err == nil {
 			data["Hours"] = page
 		}
 		v.Data = data
 		s.render(w, r, http.StatusUnprocessableEntity, "resource_hours.html", v)
 	case config.ModeDays:
-		page, err := s.buildDayPage(r, res, now, loc, form.Email)
+		page, err := s.buildDayPage(r, res, now, loc, form.Member)
 		if err == nil {
 			data["Days"] = page
 		}
@@ -158,7 +172,7 @@ func (s *Server) handleBooking(w http.ResponseWriter, r *http.Request, v *view) 
 		"Outlook":     ical.OutlookLink(ev),
 		"ICS":         "/bokning/" + b.ID + "/kalender.ics",
 		"CancelToken": b.CancelToken,
-		"Mine":        strings.EqualFold(b.Email, v.Ident.Email),
+		"Mine":        b.MMUsername != "" && b.MMUsername == store.Member(v.Ident.MMUsername),
 	}
 	s.render(w, r, http.StatusOK, "booking.html", v)
 }
@@ -189,11 +203,11 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request, v *view) {
 	}
 	token := r.FormValue("token")
 	// A member may cancel with the token from their confirmation, or because
-	// the booking was made with the e-mail address they have remembered.
-	own := v.Ident.Email != "" && strings.EqualFold(v.Ident.Email, b.Email)
+	// the booking belongs to the Mattermost account this browser remembers.
+	own := v.Ident.MMUsername != "" && store.Member(v.Ident.MMUsername) == b.MMUsername
 	if token != b.CancelToken && !own && !v.Role.Admin() {
 		s.renderError(w, r, http.StatusForbidden, "Kunde inte avboka",
-			"Använd länken i bekräftelsemejlet, eller be husets administratör om hjälp.")
+			"Använd länken i bekräftelsen från boten i Mattermost, eller be husets administratör om hjälp.")
 		return
 	}
 	if err := s.store.Cancel(r.Context(), id, b.CancelToken, true, s.now()); err != nil {
@@ -212,13 +226,26 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request, v *view) {
 
 func (s *Server) handleMyBookings(w http.ResponseWriter, r *http.Request, v *view) {
 	loc := s.cfg.Location()
-	email := v.Ident.Email
-	if q := strings.TrimSpace(r.URL.Query().Get("epost")); q != "" {
-		email = q
+
+	// Whose bookings? The remembered account by default, or whoever the field
+	// names. That is looked up the same way the booking form does it, so a
+	// name, a nickname or half a name finds the person rather than quietly
+	// finding nobody.
+	member := store.Member(v.Ident.MMUsername)
+	name, typed, lookupErr := v.Ident.Name, member, ""
+	if q := strings.TrimSpace(r.URL.Query().Get("medlem")); q != "" {
+		typed = q
+		who, errs := s.findMember(r.Context(), q, false)
+		if len(errs) > 0 {
+			member, lookupErr = "", errs[0].Message
+		} else {
+			member, name, typed = store.Member(who.Username), who.DisplayName(), who.Username
+		}
 	}
+
 	var rows []bookingRow
-	if email != "" {
-		list, err := s.store.ByEmail(r.Context(), email, false, s.now().AddDate(0, 0, -30))
+	if member != "" {
+		list, err := s.store.ByMember(r.Context(), member, false, s.now().AddDate(0, 0, -30))
 		if err != nil {
 			s.log.Error("load own bookings", "err", err)
 		} else {
@@ -228,7 +255,10 @@ func (s *Server) handleMyBookings(w http.ResponseWriter, r *http.Request, v *vie
 	v.Title = "Mina bokningar"
 	v.Data = map[string]any{
 		"Rows":      rows,
-		"Email":     email,
+		"Member":    member,
+		"Name":      name,
+		"Typed":     typed,
+		"Error":     lookupErr,
 		"Cancelled": r.URL.Query().Get("avbokad") != "",
 	}
 	s.render(w, r, http.StatusOK, "mine.html", v)

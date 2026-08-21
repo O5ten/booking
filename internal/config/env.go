@@ -33,16 +33,10 @@ func LoadRuntime() (Runtime, error) {
 		AdminPassword: os.Getenv("ADMIN_PASSWORD"),
 		SessionMaxAge: time.Duration(envInt("SESSION_DAYS", 30)) * 24 * time.Hour,
 		TrustProxy:    envBool("TRUST_PROXY", true),
-		Mail: MailSettings{
-			Host:       os.Getenv("SMTP_HOST"),
-			Port:       envInt("SMTP_PORT", 587),
-			Username:   os.Getenv("SMTP_USER"),
-			Password:   os.Getenv("SMTP_PASSWORD"),
-			From:       os.Getenv("SMTP_FROM"),
-			FromName:   env("SMTP_FROM_NAME", "Rudbeckia bokning"),
-			Encryption: strings.ToLower(env("SMTP_ENCRYPTION", "starttls")),
-			ReplyTo:    os.Getenv("SMTP_REPLY_TO"),
-			BCC:        os.Getenv("SMTP_BCC"),
+		Mattermost: MattermostSettings{
+			URL:   strings.TrimRight(os.Getenv("MATTERMOST_URL"), "/"),
+			Token: strings.TrimSpace(os.Getenv("MATTERMOST_TOKEN")),
+			Allow: envList("MATTERMOST_ALLOW"),
 		},
 	}
 	if demo {
@@ -66,10 +60,14 @@ func LoadRuntime() (Runtime, error) {
 		sum := sha256.Sum256([]byte("rudbeckia|" + rt.Password + "|" + rt.AdminPassword))
 		rt.SessionSecret = sum[:]
 	}
-	switch rt.Mail.Encryption {
-	case "starttls", "tls", "none":
-	default:
-		return rt, errors.New(`SMTP_ENCRYPTION must be one of "starttls", "tls", "none"`)
+	// Half a configuration is worse than none: it looks connected and silently
+	// is not, so say so at startup instead.
+	if (rt.Mattermost.URL == "") != (rt.Mattermost.Token == "") {
+		return rt, errors.New("set both MATTERMOST_URL and MATTERMOST_TOKEN, or neither")
+	}
+	if demo {
+		// The demo must never reach a real chat server, and never DM anyone.
+		rt.Mattermost = MattermostSettings{}
 	}
 	return rt, nil
 }
@@ -88,6 +86,23 @@ func envInt(key string, def int) int {
 		}
 	}
 	return def
+}
+
+// envList reads a comma-separated list, ignoring blanks and stray @ prefixes
+// so "@anna, bo" and "anna,bo" mean the same thing.
+func envList(key string) []string {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimPrefix(strings.TrimSpace(part), "@")
+		if part != "" {
+			out = append(out, strings.ToLower(part))
+		}
+	}
+	return out
 }
 
 func envBool(key string, def bool) bool {

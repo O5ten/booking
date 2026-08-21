@@ -218,3 +218,89 @@ func TestLoadReportsMissingFile(t *testing.T) {
 		t.Errorf("err = %v, want a read failure", err)
 	}
 }
+
+func TestMattermostAllowList(t *testing.T) {
+	open := MattermostSettings{}
+	if !open.Allowed("vem.som.helst") {
+		t.Error("without an allow list everyone in the house may book")
+	}
+
+	limited := MattermostSettings{Allow: []string{"mikael.ostberg"}}
+	for _, ok := range []string{"mikael.ostberg", "@mikael.ostberg", " Mikael.Ostberg "} {
+		if !limited.Allowed(ok) {
+			t.Errorf("Allowed(%q) = false, want true", ok)
+		}
+	}
+	for _, no := range []string{"", "anna.andersson", "mikael"} {
+		if limited.Allowed(no) {
+			t.Errorf("Allowed(%q) = true, want false", no)
+		}
+	}
+	if limited.AllowList() != "mikael.ostberg" {
+		t.Errorf("AllowList() = %q", limited.AllowList())
+	}
+}
+
+func TestMattermostEnabledNeedsBothHalves(t *testing.T) {
+	cases := []struct {
+		settings MattermostSettings
+		want     bool
+	}{
+		{MattermostSettings{}, false},
+		{MattermostSettings{URL: "https://chat.example.com"}, false},
+		{MattermostSettings{Token: "tok"}, false},
+		{MattermostSettings{URL: "https://chat.example.com", Token: "tok"}, true},
+	}
+	for _, c := range cases {
+		if got := c.settings.Enabled(); got != c.want {
+			t.Errorf("Enabled(%+v) = %v, want %v", c.settings, got, c.want)
+		}
+	}
+}
+
+func TestLoadRuntimeReadsTheMattermostBot(t *testing.T) {
+	t.Setenv("BOOKING_PASSWORD", "hemligt")
+	t.Setenv("MATTERMOST_URL", "https://chat.rudbeckia.nu/")
+	t.Setenv("MATTERMOST_TOKEN", "  bot-token  ")
+	t.Setenv("MATTERMOST_ALLOW", "@Mikael.Ostberg, anna.andersson ,")
+
+	rt, err := LoadRuntime()
+	if err != nil {
+		t.Fatalf("load runtime: %v", err)
+	}
+	if rt.Mattermost.URL != "https://chat.rudbeckia.nu" {
+		t.Errorf("url = %q, want it without the trailing slash", rt.Mattermost.URL)
+	}
+	if rt.Mattermost.Token != "bot-token" {
+		t.Errorf("token = %q, want it trimmed", rt.Mattermost.Token)
+	}
+	want := []string{"mikael.ostberg", "anna.andersson"}
+	if len(rt.Mattermost.Allow) != 2 || rt.Mattermost.Allow[0] != want[0] || rt.Mattermost.Allow[1] != want[1] {
+		t.Errorf("allow = %v, want %v", rt.Mattermost.Allow, want)
+	}
+}
+
+// Half a bot is worse than none: it looks configured and silently is not.
+func TestLoadRuntimeRefusesHalfAMattermostConfiguration(t *testing.T) {
+	t.Setenv("BOOKING_PASSWORD", "hemligt")
+	t.Setenv("MATTERMOST_URL", "https://chat.rudbeckia.nu")
+	t.Setenv("MATTERMOST_TOKEN", "")
+	if _, err := LoadRuntime(); err == nil {
+		t.Error("a url without a token should be refused at startup")
+	}
+}
+
+// Demo mode must never reach a real chat server.
+func TestDemoModeDropsTheMattermostConfiguration(t *testing.T) {
+	t.Setenv("DEMO", "true")
+	t.Setenv("MATTERMOST_URL", "https://chat.rudbeckia.nu")
+	t.Setenv("MATTERMOST_TOKEN", "bot-token")
+
+	rt, err := LoadRuntime()
+	if err != nil {
+		t.Fatalf("load runtime: %v", err)
+	}
+	if rt.Mattermost.Enabled() {
+		t.Errorf("demo mode kept %+v; it must talk to nobody", rt.Mattermost)
+	}
+}

@@ -191,7 +191,7 @@ func TestValidateAcceptsACustomLength(t *testing.T) {
 		Resource: flexibleBike(),
 		Start:    at(loc, "2026-05-02 10:00"),
 		End:      at(loc, "2026-05-02 13:30"), // 3.5 h, not a preset
-		Name:     "Anna", Email: "anna@example.se",
+		Name:     "Anna", MMUsername: "anna.andersson",
 	}, now, loc)
 	if len(errs) != 0 {
 		t.Errorf("a 3.5 h booking should be accepted: %s", messages(errs))
@@ -202,7 +202,7 @@ func TestValidateAcceptsACustomLength(t *testing.T) {
 		Resource: bike(),
 		Start:    at(loc, "2026-05-03 10:00"),
 		End:      at(loc, "2026-05-03 13:30"),
-		Name:     "Anna", Email: "anna@example.se",
+		Name:     "Anna", MMUsername: "anna.andersson",
 	}, now, loc)
 	if len(errs) == 0 {
 		t.Error("3.5 h should be refused when custom lengths are off")
@@ -219,7 +219,7 @@ func TestCustomLengthStillRespectsOpeningHours(t *testing.T) {
 		Resource: flexibleBike(), // open 06:00–22:00
 		Start:    at(loc, "2026-05-02 19:00"),
 		End:      at(loc, "2026-05-02 23:30"), // 4.5 h, runs past closing
-		Name:     "Anna", Email: "anna@example.se",
+		Name:     "Anna", MMUsername: "anna.andersson",
 	}, now, loc)
 	if !strings.Contains(messages(errs), "kan bokas mellan") {
 		t.Errorf("expected an opening-hours complaint, got %q", messages(errs))
@@ -268,7 +268,7 @@ func TestFullDayBookingValidates(t *testing.T) {
 		Resource: res,
 		Start:    at(loc, "2026-05-02 06:00"),
 		End:      at(loc, "2026-05-02 22:00"),
-		Name:     "Anna", Email: "anna@example.se",
+		Name:     "Anna", MMUsername: "anna.andersson",
 	}, at(loc, "2026-05-01 08:00"), loc)
 	if len(errs) != 0 {
 		t.Errorf("a full-day booking should be accepted: %s", messages(errs))
@@ -291,7 +291,7 @@ func TestFullDayBookingConsumesTheWeeklyAllowance(t *testing.T) {
 		Resource: res,
 		Start:    at(loc, "2026-05-02 06:00"),
 		End:      at(loc, "2026-05-02 22:00"),
-		Name:     "Anna", Email: "anna@example.se",
+		Name:     "Anna", MMUsername: "anna.andersson",
 	}
 	_, _, errs := Validate(context.Background(), st, full, now, loc)
 	if len(errs) != 0 {
@@ -301,7 +301,7 @@ func TestFullDayBookingConsumesTheWeeklyAllowance(t *testing.T) {
 	// Store it, then try to add an hour later the same week.
 	b := store.Booking{
 		ID: "full", ResourceID: res.ID, Start: full.Start, End: full.End,
-		Name: full.Name, Email: full.Email,
+		Name: full.Name, MMUsername: full.MMUsername,
 		Status: store.StatusConfirmed, CreatedAt: now,
 	}
 	if err := st.Create(context.Background(), b, b.Start, b.End); err != nil {
@@ -312,7 +312,7 @@ func TestFullDayBookingConsumesTheWeeklyAllowance(t *testing.T) {
 		Resource: res,
 		Start:    at(loc, "2026-05-04 10:00"),
 		End:      at(loc, "2026-05-04 11:00"),
-		Name:     "Anna", Email: "anna@example.se",
+		Name:     "Anna", MMUsername: "anna.andersson",
 	}, now, loc)
 	if !strings.Contains(messages(errs), "gränsen är") {
 		t.Errorf("a second booking should hit the allowance, got %q", messages(errs))

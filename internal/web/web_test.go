@@ -15,7 +15,7 @@ import (
 
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/auth"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/config"
-	"github.com/mikaelo/booking.rudbeckia.nu/internal/mail"
+	"github.com/mikaelo/booking.rudbeckia.nu/internal/mattermost"
 	"github.com/mikaelo/booking.rudbeckia.nu/internal/store"
 )
 
@@ -82,11 +82,19 @@ type harness struct {
 	server *Server
 	mux    http.Handler
 	store  *store.Store
+	chat   *fakeMattermost
 	now    time.Time
 	loc    *time.Location
 }
 
 func newHarness(t *testing.T) *harness {
+	t.Helper()
+	return newHarnessAllowing(t)
+}
+
+// newHarnessAllowing builds a server where only the named Mattermost users may
+// book. With no names, everyone in the directory may.
+func newHarnessAllowing(t *testing.T, allow ...string) *harness {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
@@ -103,10 +111,20 @@ func newHarness(t *testing.T) *harness {
 	}
 	t.Cleanup(func() { st.Close() })
 
-	rt := config.Runtime{BaseURL: "https://booking.rudbeckia.nu", TrustProxy: true}
+	chat := newFakeMattermost(t)
+	rt := config.Runtime{
+		BaseURL:    "https://booking.rudbeckia.nu",
+		TrustProxy: true,
+		Mattermost: config.MattermostSettings{
+			URL:   chat.URL,
+			Token: "test-token",
+			Allow: allow,
+		},
+	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	guard := auth.New("husets-losenord", "admin-losenord", []byte("secret-for-tests"), time.Hour, false)
-	srv, err := New(cfg, rt, st, guard, mail.NewSender(config.MailSettings{}, log), log)
+	bot := mattermost.New(rt.Mattermost.URL, rt.Mattermost.Token, log)
+	srv, err := New(cfg, rt, st, guard, bot, log)
 	if err != nil {
 		t.Fatalf("new server: %v", err)
 	}
@@ -116,7 +134,7 @@ func newHarness(t *testing.T) *harness {
 	now := time.Date(2026, 5, 4, 8, 0, 0, 0, loc)
 	srv.now = func() time.Time { return now }
 
-	return &harness{T: t, server: srv, mux: srv.Handler(), store: st, now: now, loc: loc}
+	return &harness{T: t, server: srv, mux: srv.Handler(), store: st, chat: chat, now: now, loc: loc}
 }
 
 // login returns the session cookies for a password.
@@ -255,7 +273,7 @@ func TestBookingLifecycle(t *testing.T) {
 	form := url.Values{
 		"datum": {tomorrow}, "start": {"10:00"}, "langd": {"4"},
 		"name": {"Anna Andersson"}, "apartment": {"1403"},
-		"email": {"anna@example.se"}, "note": {"Storhandling"}, "remember": {"1"},
+		"medlem": {"anna.andersson"}, "note": {"Storhandling"}, "remember": {"1"},
 	}
 	rec := h.do("POST", "/resurs/ellastcykel/boka", form, member)
 	if rec.Code != http.StatusSeeOther {
@@ -325,14 +343,14 @@ func TestDoubleBookingIsRefused(t *testing.T) {
 
 	form := url.Values{
 		"datum": {tomorrow}, "start": {"10:00"}, "langd": {"4"},
-		"name": {"Anna"}, "email": {"anna@example.se"},
+		"name": {"Anna"}, "medlem": {"anna.andersson"},
 	}
 	if rec := h.do("POST", "/resurs/ellastcykel/boka", form, member); rec.Code != http.StatusSeeOther {
 		t.Fatalf("first booking = %d", rec.Code)
 	}
 
 	form.Set("name", "Bo")
-	form.Set("email", "bo@example.se")
+	form.Set("medlem", "bo.bengtsson")
 	form.Set("start", "12:00")
 	form.Set("langd", "1")
 	rec := h.do("POST", "/resurs/ellastcykel/boka", form, member)
@@ -350,17 +368,17 @@ func TestInvalidBookingKeepsTheFormFilledIn(t *testing.T) {
 
 	form := url.Values{
 		"datum": {h.date(1)}, "start": {"10:00"}, "langd": {"4"},
-		"name": {"Anna Andersson"}, "apartment": {"1403"}, "email": {"trasig-adress"},
+		"name": {"Anna Andersson"}, "apartment": {"1403"}, "medlem": {"finns.inte"},
 	}
 	rec := h.do("POST", "/resurs/ellastcykel/boka", form, member)
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want 422", rec.Code)
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "giltig e-postadress") {
+	if !strings.Contains(body, "Hittar ingen i husets Mattermost") {
 		t.Error("the validation message is missing")
 	}
-	for _, want := range []string{`value="Anna Andersson"`, `value="1403"`, `value="trasig-adress"`} {
+	for _, want := range []string{`value="Anna Andersson"`, `value="1403"`, `value="finns.inte"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the form lost %s, so the member would have to retype it", want)
 		}
@@ -373,7 +391,7 @@ func TestGuestRoomBookingUsesNights(t *testing.T) {
 
 	form := url.Values{
 		"fran": {h.date(10)}, "till": {h.date(13)},
-		"name": {"Anna"}, "email": {"anna@example.se"},
+		"name": {"Anna"}, "medlem": {"anna.andersson"},
 	}
 	rec := h.do("POST", "/resurs/gastrum-1/boka", form, member)
 	if rec.Code != http.StatusSeeOther {
@@ -402,7 +420,7 @@ func TestAdminSeesEveryBookingAndCanCancel(t *testing.T) {
 
 	form := url.Values{
 		"datum": {h.date(1)}, "start": {"10:00"}, "langd": {"4"},
-		"name": {"Anna Andersson"}, "email": {"anna@example.se"}, "apartment": {"1403"},
+		"name": {"Anna Andersson"}, "medlem": {"anna.andersson"}, "apartment": {"1403"},
 	}
 	rec := h.do("POST", "/resurs/ellastcykel/boka", form, member)
 	id := strings.TrimSuffix(strings.TrimPrefix(rec.Header().Get("Location"), "/bokning/"), "?ny=1")
@@ -439,11 +457,11 @@ func TestAdminFilters(t *testing.T) {
 
 	h.do("POST", "/resurs/ellastcykel/boka", url.Values{
 		"datum": {h.date(1)}, "start": {"10:00"}, "langd": {"2"},
-		"name": {"Anna Andersson"}, "email": {"anna@example.se"},
+		"name": {"Anna Andersson"}, "medlem": {"anna.andersson"},
 	}, member)
 	h.do("POST", "/resurs/gastrum-1/boka", url.Values{
 		"fran": {h.date(10)}, "till": {h.date(12)},
-		"name": {"Bo Bengtsson"}, "email": {"bo@example.se"},
+		"name": {"Bo Bengtsson"}, "medlem": {"bo.bengtsson"},
 	}, member)
 
 	byResource := h.do("GET", "/admin?resurs=gastrum-1", nil, admin).Body.String()
@@ -462,7 +480,7 @@ func TestResourceFeedListsBookings(t *testing.T) {
 	member := h.login("husets-losenord")
 	h.do("POST", "/resurs/ellastcykel/boka", url.Values{
 		"datum": {h.date(1)}, "start": {"10:00"}, "langd": {"2"},
-		"name": {"Anna"}, "email": {"anna@example.se"},
+		"name": {"Anna"}, "medlem": {"anna.andersson"},
 	}, member)
 
 	rec := h.do("GET", "/kalender/ellastcykel/flode.ics", nil, member)
@@ -513,6 +531,13 @@ func TestLogoutClearsTheSession(t *testing.T) {
 	if rec := h.do("GET", "/", nil, cleared); rec.Code != http.StatusSeeOther {
 		t.Error("the cleared cookie should no longer grant access")
 	}
+}
+
+// directoryUsername maps "Anna Andersson" to the username the fake directory
+// knows her by.
+func directoryUsername(name string) string {
+	parts := strings.Fields(strings.ToLower(name))
+	return strings.Join(parts, ".")
 }
 
 // between returns the text between two markers, or "".
@@ -581,7 +606,7 @@ func storeBooking(h *harness, day time.Time, hour, length int) store.Booking {
 		End:        start.Add(time.Duration(length) * time.Hour),
 		Mode:       "hours",
 		Name:       "Någon Annan",
-		Email:      "annan@example.se",
+		MMUsername: "nagon.annan",
 		Status:     store.StatusConfirmed,
 		CreatedAt:  h.now,
 	}
@@ -722,7 +747,7 @@ func TestBookingWithATypedLength(t *testing.T) {
 
 	form := url.Values{
 		"datum": {h.date(1)}, "start": {"10:00"}, "langd": {"3.5"},
-		"name": {"Anna Andersson"}, "email": {"anna@example.se"},
+		"name": {"Anna Andersson"}, "medlem": {"anna.andersson"},
 	}
 	rec := h.do("POST", "/resurs/ellastcykel/boka", form, member)
 	if rec.Code != http.StatusSeeOther {
@@ -743,7 +768,7 @@ func TestTypedLengthIsRefusedWhereNotAllowed(t *testing.T) {
 
 	form := url.Values{
 		"datum": {h.date(1)}, "start": {"10:00"}, "langd": {"3"},
-		"name": {"Anna"}, "email": {"anna@example.se"},
+		"name": {"Anna"}, "medlem": {"anna.andersson"},
 	}
 	rec := h.do("POST", "/resurs/elcykel/boka", form, member)
 	if rec.Code != http.StatusUnprocessableEntity {
@@ -774,7 +799,7 @@ func TestUpcomingListsBookingsInOrderFromNow(t *testing.T) {
 	for _, b := range seed {
 		form := url.Values{
 			"datum": {b.day}, "start": {b.start}, "langd": {b.hours},
-			"name": {b.who}, "email": {strings.ToLower(strings.Split(b.who, " ")[0]) + "@example.com"},
+			"name": {b.who}, "medlem": {directoryUsername(b.who)},
 		}
 		if rec := h.do("POST", "/resurs/ellastcykel/boka", form, member); rec.Code != http.StatusSeeOther {
 			t.Fatalf("seed %s: %d\n%s", b.who, rec.Code, rec.Body.String())
@@ -817,7 +842,7 @@ func TestUpcomingGroupsByDayAndShowsGuestRoomNights(t *testing.T) {
 
 	form := url.Values{
 		"fran": {h.date(5)}, "till": {h.date(8)},
-		"name": {"Anna Andersson"}, "email": {"anna@example.se"},
+		"name": {"Anna Andersson"}, "medlem": {"anna.andersson"},
 	}
 	if rec := h.do("POST", "/resurs/gastrum-1/boka", form, member); rec.Code != http.StatusSeeOther {
 		t.Fatalf("seed: %d", rec.Code)
@@ -936,5 +961,65 @@ func TestCategoryAndResourceLinksAreRendered(t *testing.T) {
 	// A category without a link must not render an empty anchor.
 	if strings.Contains(start, `href=""`) {
 		t.Error("a category with no link produced an empty href")
+	}
+}
+
+// A release must reach the browsers. The static files are cached hard, so
+// their addresses carry a hash of what they contain.
+func TestStaticFilesAreFingerprintedAndCachedHard(t *testing.T) {
+	h := newHarness(t)
+	page := h.do("GET", "/login", nil, nil).Body.String()
+
+	for _, name := range []string{"app.css", "app.js", "members.js"} {
+		sum, ok := h.server.assets[name]
+		if !ok || len(sum) != 10 {
+			t.Fatalf("%s has no content hash: %q", name, sum)
+		}
+		want := "/static/" + name + "?v=" + sum
+		if !strings.Contains(page, want) {
+			t.Errorf("the page does not ask for %s", want)
+		}
+
+		// The hashed address may be kept forever; a bare one may not.
+		hashed := h.do("GET", want, nil, nil)
+		if hashed.Code != http.StatusOK {
+			t.Fatalf("GET %s = %d", want, hashed.Code)
+		}
+		if cc := hashed.Header().Get("Cache-Control"); !strings.Contains(cc, "immutable") {
+			t.Errorf("%s cache-control = %q, want immutable", want, cc)
+		}
+		bare := h.do("GET", "/static/"+name, nil, nil)
+		if cc := bare.Header().Get("Cache-Control"); !strings.Contains(cc, "max-age=300") {
+			t.Errorf("an unstamped %s may only be cached briefly, got %q", name, cc)
+		}
+	}
+}
+
+// The browser-side tests live next to the file they test, but they are not
+// part of the site.
+func TestTestFilesAreNotShipped(t *testing.T) {
+	h := newHarness(t)
+	if rec := h.do("GET", "/static/members_test.mjs", nil, nil); rec.Code != http.StatusNotFound {
+		t.Errorf("GET /static/members_test.mjs = %d, want 404", rec.Code)
+	}
+	if _, ok := h.server.assets["members_test.mjs"]; ok {
+		t.Error("the test file was embedded in the binary")
+	}
+	// The real assets are still there.
+	for _, name := range []string{"app.css", "app.js", "members.js", "rudbeckia.png"} {
+		if _, ok := h.server.assets[name]; !ok {
+			t.Errorf("%s is missing from the binary", name)
+		}
+	}
+}
+
+// The hash has to follow the content, or it is worse than no hash at all.
+func TestAssetHashesDifferPerFile(t *testing.T) {
+	h := newHarness(t)
+	if h.server.assets["app.js"] == h.server.assets["members.js"] {
+		t.Error("two different files got the same hash")
+	}
+	if got := h.server.asset("finns-inte.js"); got != "/static/finns-inte.js" {
+		t.Errorf("an unknown file should be left alone, got %q", got)
 	}
 }

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"sync"
@@ -23,7 +24,8 @@ func sample(id string, start time.Time, hours int) Booking {
 	return Booking{
 		ID: id, ResourceID: "ellastcykel",
 		Start: start, End: start.Add(time.Duration(hours) * time.Hour),
-		Mode: "hours", Name: "Anna", Email: "anna@example.se",
+		Mode: "hours", Name: "Anna", MMUsername: "anna.andersson",
+		MMUserID: "u-anna", Email: "anna@example.se",
 		Status: StatusConfirmed, CancelToken: "tok-" + id, CreatedAt: start.Add(-24 * time.Hour),
 	}
 }
@@ -196,7 +198,7 @@ func TestInRangeOnlyReturnsOverlaps(t *testing.T) {
 	}
 }
 
-func TestByEmailIsCaseInsensitiveAndSkipsCancelled(t *testing.T) {
+func TestByMemberIsCaseInsensitiveAndSkipsCancelled(t *testing.T) {
 	st := open(t)
 	ctx := context.Background()
 	now := time.Date(2026, 5, 1, 9, 0, 0, 0, time.UTC)
@@ -204,16 +206,16 @@ func TestByEmailIsCaseInsensitiveAndSkipsCancelled(t *testing.T) {
 
 	a := sample("a", base, 2)
 	b := sample("b", base.Add(4*time.Hour), 2)
-	b.Email = "ANNA@Example.SE"
+	b.MMUsername = "Anna.Andersson"
 	for _, x := range []Booking{a, b} {
 		if err := st.Create(ctx, x, x.Start, x.End); err != nil {
 			t.Fatalf("seed: %v", err)
 		}
 	}
 
-	got, err := st.ByEmail(ctx, "  Anna@example.se ", false, now)
+	got, err := st.ByMember(ctx, " @Anna.Andersson ", false, now)
 	if err != nil {
-		t.Fatalf("by email: %v", err)
+		t.Fatalf("by member: %v", err)
 	}
 	if len(got) != 2 {
 		t.Fatalf("got %d, want both bookings regardless of case", len(got))
@@ -222,11 +224,11 @@ func TestByEmailIsCaseInsensitiveAndSkipsCancelled(t *testing.T) {
 	if err := st.Cancel(ctx, "a", "tok-a", false, now); err != nil {
 		t.Fatalf("cancel: %v", err)
 	}
-	got, _ = st.ByEmail(ctx, "anna@example.se", false, now)
+	got, _ = st.ByMember(ctx, "anna.andersson", false, now)
 	if len(got) != 1 || got[0].ID != "b" {
 		t.Errorf("cancelled bookings should be hidden, got %v", ids(got))
 	}
-	got, _ = st.ByEmail(ctx, "anna@example.se", true, now)
+	got, _ = st.ByMember(ctx, "anna.andersson", true, now)
 	if len(got) != 2 {
 		t.Errorf("includeCancelled should return both, got %v", ids(got))
 	}
@@ -241,7 +243,7 @@ func TestHoursForUserBetweenClipsToWindow(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	full, err := st.HoursForUserBetween(ctx, "ellastcykel", "anna@example.se",
+	full, err := st.HoursForUserBetween(ctx, "ellastcykel", "anna.andersson",
 		base.Add(-time.Hour), base.Add(6*time.Hour))
 	if err != nil {
 		t.Fatalf("hours: %v", err)
@@ -251,7 +253,7 @@ func TestHoursForUserBetweenClipsToWindow(t *testing.T) {
 	}
 
 	// A window covering only the middle two hours counts two.
-	clipped, _ := st.HoursForUserBetween(ctx, "ellastcykel", "anna@example.se",
+	clipped, _ := st.HoursForUserBetween(ctx, "ellastcykel", "anna.andersson",
 		base.Add(time.Hour), base.Add(3*time.Hour))
 	if clipped != 2 {
 		t.Errorf("clipped window = %v h, want 2", clipped)
@@ -304,4 +306,81 @@ func ids(bs []Booking) []string {
 		out[i] = b.ID
 	}
 	return out
+}
+
+// A database written before the Mattermost switch must open and keep its
+// history: the new columns are added empty rather than the old rows lost.
+func TestOpenMigratesADatabaseFromBeforeMattermost(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open raw: %v", err)
+	}
+	_, err = db.Exec(`
+		CREATE TABLE bookings (
+			id           TEXT PRIMARY KEY,
+			resource_id  TEXT NOT NULL,
+			start_utc    TEXT NOT NULL,
+			end_utc      TEXT NOT NULL,
+			mode         TEXT NOT NULL DEFAULT 'hours',
+			name         TEXT NOT NULL,
+			apartment    TEXT NOT NULL DEFAULT '',
+			email        TEXT NOT NULL,
+			phone        TEXT NOT NULL DEFAULT '',
+			note         TEXT NOT NULL DEFAULT '',
+			status       TEXT NOT NULL DEFAULT 'confirmed',
+			cancel_token TEXT NOT NULL,
+			created_at   TEXT NOT NULL,
+			cancelled_at TEXT,
+			created_ip   TEXT NOT NULL DEFAULT ''
+		);
+		INSERT INTO bookings (id, resource_id, start_utc, end_utc, mode, name, email,
+			cancel_token, created_at)
+		VALUES ('gammal', 'ellastcykel', '2026-05-02T10:00:00Z', '2026-05-02T12:00:00Z',
+			'hours', 'Anna Andersson', 'anna@example.se', 'tok', '2026-05-01T09:00:00Z');`)
+	if err != nil {
+		t.Fatalf("write the old schema: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close raw: %v", err)
+	}
+
+	st, err := Open(path)
+	if err != nil {
+		t.Fatalf("open a database from before the switch: %v", err)
+	}
+	defer st.Close()
+
+	ctx := context.Background()
+	old, err := st.Get(ctx, "gammal")
+	if err != nil {
+		t.Fatalf("read the old booking: %v", err)
+	}
+	if old.Name != "Anna Andersson" || old.Email != "anna@example.se" {
+		t.Errorf("the old booking came back as %+v", old)
+	}
+	if old.MMUsername != "" || old.MMUserID != "" {
+		t.Errorf("an old booking cannot have a Mattermost account, got %q/%q",
+			old.MMUsername, old.MMUserID)
+	}
+
+	// And the migrated database is fully usable.
+	fresh := sample("ny", time.Date(2026, 5, 3, 10, 0, 0, 0, time.UTC), 2)
+	if err := st.Create(ctx, fresh, fresh.Start, fresh.End); err != nil {
+		t.Fatalf("create in a migrated database: %v", err)
+	}
+	mine, err := st.ByMember(ctx, "anna.andersson", false, time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("by member: %v", err)
+	}
+	if len(mine) != 1 || mine[0].ID != "ny" {
+		t.Errorf("member lookup returned %v, want just the new booking", ids(mine))
+	}
+
+	// Opening twice must be a no-op, not a duplicate-column error.
+	again, err := Open(path)
+	if err != nil {
+		t.Fatalf("second open: %v", err)
+	}
+	again.Close()
 }

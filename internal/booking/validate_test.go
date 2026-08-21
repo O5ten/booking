@@ -34,11 +34,11 @@ func TestValidateAcceptsAGoodRequest(t *testing.T) {
 	now := at(loc, "2026-05-01 08:00")
 
 	from, to, errs := Validate(context.Background(), st, Request{
-		Resource: bike(),
-		Start:    at(loc, "2026-05-02 10:00"),
-		End:      at(loc, "2026-05-02 14:00"),
-		Name:     "Anna Andersson",
-		Email:    "anna@example.se",
+		Resource:   bike(),
+		Start:      at(loc, "2026-05-02 10:00"),
+		End:        at(loc, "2026-05-02 14:00"),
+		Name:       "Anna Andersson",
+		MMUsername: "anna.andersson",
 	}, now, loc)
 
 	if len(errs) != 0 {
@@ -58,11 +58,11 @@ func TestValidateRejectsBadInput(t *testing.T) {
 	st := newStore(t)
 	now := at(loc, "2026-05-01 08:00")
 	base := Request{
-		Resource: bike(),
-		Start:    at(loc, "2026-05-02 10:00"),
-		End:      at(loc, "2026-05-02 14:00"),
-		Name:     "Anna",
-		Email:    "anna@example.se",
+		Resource:   bike(),
+		Start:      at(loc, "2026-05-02 10:00"),
+		End:        at(loc, "2026-05-02 14:00"),
+		Name:       "Anna",
+		MMUsername: "anna.andersson",
 	}
 
 	cases := []struct {
@@ -71,7 +71,7 @@ func TestValidateRejectsBadInput(t *testing.T) {
 		wantSub string
 	}{
 		{"no name", func(r *Request) { r.Name = "  " }, "namn"},
-		{"bad e-mail", func(r *Request) { r.Email = "anna(at)example" }, "e-postadress"},
+		{"no member", func(r *Request) { r.MMUsername = "" }, "Välj vem i huset"},
 		{"unlisted duration", func(r *Request) { r.End = r.Start.Add(3 * time.Hour) }, "tillåtna längderna"},
 		{"before opening", func(r *Request) {
 			r.Start = at(loc, "2026-05-02 04:00")
@@ -119,11 +119,11 @@ func TestValidateEnforcesActiveBookingCap(t *testing.T) {
 
 	first := store.Booking{
 		ID: "a", ResourceID: res.ID,
-		Start:  at(loc, "2026-05-03 10:00"),
-		End:    at(loc, "2026-05-03 12:00"),
-		Email:  "anna@example.se",
-		Name:   "Anna",
-		Status: store.StatusConfirmed, CreatedAt: now,
+		Start:      at(loc, "2026-05-03 10:00"),
+		End:        at(loc, "2026-05-03 12:00"),
+		MMUsername: "anna.andersson",
+		Name:       "Anna",
+		Status:     store.StatusConfirmed, CreatedAt: now,
 	}
 	if err := st.Create(context.Background(), first, first.Start, first.End); err != nil {
 		t.Fatalf("seed booking: %v", err)
@@ -133,7 +133,7 @@ func TestValidateEnforcesActiveBookingCap(t *testing.T) {
 		Resource: res,
 		Start:    at(loc, "2026-05-04 10:00"),
 		End:      at(loc, "2026-05-04 12:00"),
-		Name:     "Anna", Email: "ANNA@example.se",
+		Name:     "Anna", MMUsername: "ANNA.Andersson",
 	}, now, loc)
 
 	if !strings.Contains(messages(errs), "aktiva bokningar") {
@@ -151,9 +151,9 @@ func TestValidateEnforcesWeeklyHourCap(t *testing.T) {
 
 	seed := store.Booking{
 		ID: "a", ResourceID: res.ID,
-		Start: at(loc, "2026-05-03 10:00"),
-		End:   at(loc, "2026-05-03 14:00"),
-		Email: "anna@example.se", Name: "Anna",
+		Start:      at(loc, "2026-05-03 10:00"),
+		End:        at(loc, "2026-05-03 14:00"),
+		MMUsername: "anna.andersson", Name: "Anna",
 		Status: store.StatusConfirmed, CreatedAt: now,
 	}
 	if err := st.Create(context.Background(), seed, seed.Start, seed.End); err != nil {
@@ -164,7 +164,7 @@ func TestValidateEnforcesWeeklyHourCap(t *testing.T) {
 		Resource: res,
 		Start:    at(loc, "2026-05-04 10:00"),
 		End:      at(loc, "2026-05-04 14:00"), // 4 h more, over the 6 h cap
-		Name:     "Anna", Email: "anna@example.se",
+		Name:     "Anna", MMUsername: "anna.andersson",
 	}, now, loc)
 	if !strings.Contains(messages(errs), "gränsen är") {
 		t.Errorf("expected the weekly hour cap to fire, got %q", messages(errs))
@@ -175,7 +175,7 @@ func TestValidateEnforcesWeeklyHourCap(t *testing.T) {
 		Resource: res,
 		Start:    at(loc, "2026-05-04 10:00"),
 		End:      at(loc, "2026-05-04 12:00"),
-		Name:     "Anna", Email: "anna@example.se",
+		Name:     "Anna", MMUsername: "anna.andersson",
 	}, now, loc)
 	if len(errs) != 0 {
 		t.Errorf("2 h should fit under the 6 h cap, got %q", messages(errs))
@@ -189,9 +189,9 @@ func TestValidateDetectsOverlap(t *testing.T) {
 
 	seed := store.Booking{
 		ID: "a", ResourceID: "ellastcykel",
-		Start: at(loc, "2026-05-03 10:00"),
-		End:   at(loc, "2026-05-03 14:00"),
-		Email: "bo@example.se", Name: "Bo",
+		Start:      at(loc, "2026-05-03 10:00"),
+		End:        at(loc, "2026-05-03 14:00"),
+		MMUsername: "bo.bengtsson", Name: "Bo",
 		Status: store.StatusConfirmed, CreatedAt: now,
 	}
 	if err := st.Create(context.Background(), seed, seed.Start, seed.End); err != nil {
@@ -203,7 +203,7 @@ func TestValidateDetectsOverlap(t *testing.T) {
 		Resource: bike(),
 		Start:    at(loc, "2026-05-03 14:00"),
 		End:      at(loc, "2026-05-03 15:00"),
-		Name:     "Anna", Email: "anna@example.se",
+		Name:     "Anna", MMUsername: "anna.andersson",
 	}, now, loc)
 	if !strings.Contains(messages(errs), "bokad") {
 		t.Errorf("expected a conflict inside the buffer, got %q", messages(errs))
@@ -214,7 +214,7 @@ func TestValidateDetectsOverlap(t *testing.T) {
 		Resource: bike(),
 		Start:    at(loc, "2026-05-03 14:30"),
 		End:      at(loc, "2026-05-03 15:30"),
-		Name:     "Anna", Email: "anna@example.se",
+		Name:     "Anna", MMUsername: "anna.andersson",
 	}, now, loc)
 	if len(errs) != 0 {
 		t.Errorf("14:30 clears the buffer but was rejected: %q", messages(errs))
@@ -230,7 +230,7 @@ func TestValidateNightLimits(t *testing.T) {
 		start, end := DayRange(room(), at(loc, from+" 00:00"), at(loc, to+" 00:00"), loc)
 		_, _, errs := Validate(context.Background(), st, Request{
 			Resource: room(), Start: start, End: end,
-			Name: "Anna", Email: "anna@example.se",
+			Name: "Anna", MMUsername: "anna.andersson",
 		}, now, loc)
 		return errs
 	}
@@ -254,25 +254,10 @@ func TestValidateRejectsDisabledResource(t *testing.T) {
 		Resource: res,
 		Start:    at(loc, "2026-05-02 10:00"),
 		End:      at(loc, "2026-05-02 14:00"),
-		Name:     "Anna", Email: "anna@example.se",
+		Name:     "Anna", MMUsername: "anna.andersson",
 	}, at(loc, "2026-05-01 08:00"), loc)
 
 	if !strings.Contains(messages(errs), "går inte att boka") {
 		t.Errorf("a disabled resource should be refused, got %q", messages(errs))
-	}
-}
-
-func TestValidEmail(t *testing.T) {
-	good := []string{"anna@example.se", "a.b+tag@sub.example.co.uk"}
-	bad := []string{"", "anna", "anna@", "@example.se", "anna@example", "a b@example.se", "a@example.se, b@x.se"}
-	for _, s := range good {
-		if !validEmail(s) {
-			t.Errorf("validEmail(%q) = false, want true", s)
-		}
-	}
-	for _, s := range bad {
-		if validEmail(s) {
-			t.Errorf("validEmail(%q) = true, want false", s)
-		}
 	}
 }

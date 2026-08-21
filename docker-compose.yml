@@ -18,16 +18,13 @@ services:
       SESSION_DAYS: ${SESSION_DAYS:-30}
       LOG_LEVEL: ${LOG_LEVEL:-info}
 
-      # --- Outgoing mail ----------------------------------------------------
-      # Without these the site still works; confirmations are only logged.
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_FROM: ${SMTP_FROM:-}
-      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Rudbeckia bokning}
-      SMTP_ENCRYPTION: ${SMTP_ENCRYPTION:-starttls}
-      SMTP_REPLY_TO: ${SMTP_REPLY_TO:-}
+      # --- Mattermost -------------------------------------------------------
+      # The bot that sends confirmations and looks up who is booking. Without
+      # these the site still works; confirmations are only logged.
+      MATTERMOST_URL: ${MATTERMOST_URL:-}
+      MATTERMOST_TOKEN: ${MATTERMOST_TOKEN:-}
+      # Usernames allowed to book. Empty means everyone in the directory.
+      MATTERMOST_ALLOW: ${MATTERMOST_ALLOW:-}
     volumes:
       - booking-data:/data
       # Mount your own resource list over the one baked into the image.
